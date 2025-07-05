@@ -101,7 +101,7 @@
   {
    "fieldname": "country",
    "fieldtype": "Link",
-   "label": "Country",
+   "label": "Country of Origin",
    "options": "Country"
   },
   {
