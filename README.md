@@ -109,15 +109,24 @@ To setup the repository locally follow the steps mentioned below:
 
 1. Setup bench by following the [Installation Steps](https://frappeframework.com/docs/user/en/installation) and start the server
    ```
+   # Clone your custom Frappe repo
+   git clone https://github.com/IISHub/frappe.git
+
+   # Init the bench using your local frappe clone
+   bench init frappe-bench --frappe-path ./frappe --frappe-branch main
+   or
+   bench init frappe-bench --frappe-path ~/frappe --frappe-branch main
+
+   WITHEVER WORKS FOR YOU, then;
+
    bench start
    ```
 
 2. In a separate terminal window, run the following commands:
    ```
    # Create a new site
-   bench init frappe-bench --frappe-branch main --frappe-repo https://github.com/IISHub/frappe.git
-
    bench new-site erpnext.localhost
+
    ```
 
 3. Get the ERPNext app and install it
