@@ -21,6 +21,53 @@ from erpnext.accounts.party import get_dashboard_info, validate_party_accounts
 from erpnext.controllers.website_list_for_contact import add_role_for_portal_user
 from erpnext.utilities.transaction_base import TransactionBase
 
+import requests
+import json
+from urllib.parse import urljoin
+import requests
+from urllib.parse import urljoin
+
+BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0/"
+
+class ZARCustomerClient:
+    def __init__(self, tpin, bhf_id="000"):
+        self.endpoint = "branches/saveBrancheCustomers"
+        self.url = urljoin(BASE_URL, self.endpoint)
+        self.headers = {"Content-Type": "application/json"}
+        self.tpin = tpin
+        self.bhf_id = bhf_id
+
+    def create_customer(self):
+        if not self.tpin:
+            raise ValueError("TPIN is required.")
+
+        payload = {
+            "tpin": 2484778002,
+            "bhfId": self.bhf_id,
+            "custNo": "097xxxxxxx",      
+            "custTpin": self.tpin,      
+            "custNm": "ZRA",              
+            "adrs": None,
+            "email": None,
+            "faxNo": None,
+            "useYn": "Y",
+            "remark": None,
+            "regrNm": "Admin",
+            "regrId": "Admin",
+            "modrNm": "Admin",
+            "modrId": "Admin"
+        }
+
+        try:
+            response = requests.post(self.url, headers=self.headers, json=payload)
+            print("Status Code:", response.status_code)
+            print("Response:", response.text)
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"API request failed: {e}")
+
+
+
 
 class Customer(TransactionBase):
 	# begin: auto-generated types
@@ -134,6 +181,41 @@ class Customer(TransactionBase):
 			return new_customer_name
 
 		return self.customer_name
+	
+
+
+	def before_insert(self):
+		print("===== Fields Being Sent During Customer Insert =====")
+		for field in frappe.get_meta(self.doctype).fields:
+			print(f"{field.fieldname}: {self.get(field.fieldname)}")
+		print("====================================================")
+
+		tpin = self.get("custom_customer_tpin")
+		if not tpin:
+			frappe.throw(_("Customer TPIN ({0}) is required.").format(frappe.bold("custom_customer_tpin")))
+
+		# ✅ Validate if TPIN already exists
+		if frappe.db.exists("Customer", {"custom_customer_tpin": tpin}):
+			frappe.throw(
+				_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin))
+			)
+
+		# ✅ Call API only after confirming TPIN is unique
+		try:
+			client = ZARCustomerClient(tpin=tpin)
+			result = client.create_customer()
+			if result.get("resultCd") != "000":
+				frappe.throw(_("{0}: {1}").format(
+					frappe.bold("Customer Sync Failed"),
+					frappe.bold(result.get("resultMsg", "Unknown Error"))
+				))
+		except Exception as e:
+			frappe.throw(_("API call failed: {0}").format(frappe.bold(str(e))))
+
+
+
+
+
 
 	def after_insert(self):
 		"""If customer created from Lead, update customer id in quotations, opportunities"""
@@ -202,7 +284,7 @@ class Customer(TransactionBase):
 				frappe.throw(
 					_("{0} is not a company bank account").format(frappe.bold(self.default_bank_account))
 				)
-
+	
 	def validate_internal_customer(self):
 		if not self.is_internal_customer:
 			self.represents_company = ""

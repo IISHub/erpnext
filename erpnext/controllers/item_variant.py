@@ -24,6 +24,41 @@ class ItemTemplateCannotHaveStock(frappe.ValidationError):
 	pass
 
 
+def log_item_changes(doc, method):
+    """Log changes made to Item documents"""
+    print(f"🔄 Item change detected - Method: {method}") 
+    
+    if doc.flags.in_insert:
+        print(f"📝 New item being created: {doc.name}")
+        return
+    
+    old_doc = doc.get_doc_before_save()
+    if not old_doc:
+        print("⚠️ No old doc found for comparison")
+        return
+    
+    print(f"🔍 Comparing changes for item: {doc.name}")
+    
+    # Compare all fields
+    for field in doc.meta.get("fields"):
+        fieldname = field.fieldname
+        if fieldname in ["modified", "modified_by", "creation", "owner"]:
+            continue
+            
+        old_value = old_doc.get(fieldname)
+        new_value = doc.get(fieldname)
+        
+        if old_value != new_value:
+            print(f"  🔄 {fieldname}: {old_value} → {new_value}")
+    
+    print("✅ Change logging complete")
+
+	
+@frappe.whitelist()
+def test_item_logging():
+    item = frappe.get_doc("Item", "ITEM-001")
+    item.save()
+    return "Test executed"
 @frappe.whitelist()
 def get_variant(template, args=None, variant=None, manufacturer=None, manufacturer_part_no=None):
 	"""
