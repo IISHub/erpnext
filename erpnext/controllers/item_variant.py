@@ -38,7 +38,7 @@ def log_item_changes(doc, method):
         print("⚠️ No old doc found for comparison")
         return
 
-    import requests  # Ensure you have this imported at the top
+    import requests
 
     item_name = doc.get("item_name")
     tpin = 18288282828
@@ -100,23 +100,33 @@ def log_item_changes(doc, method):
     if not vatCatCd_code:
         frappe.throw(f"Invalid or unmapped VAT category: '{vatCatCd}'")
 
-    # Other values
-    iplCatCd = doc.get("custom_ipl_category_code")
-    tlCatCd = doc.get("custom_tl_category_code")
-    exciseTxCatCd = doc.get("custom_excise_tax_category_code")
+    # IPL category code
+    getIplCatCd = doc.get("custom_ipl_category_code")
+    iplCatCd = "IPL1" if getIplCatCd == "Insurance Premium Levy" else "IPL2"
+
+    # TL category code
+    getTlCatCd = doc.get("custom_tl_category_code")
+    tlCatCd = "TL" if getTlCatCd == "Tourism Levy" else "F"
+
+    # Excise tax category code
+    getExciseTxCatCd = doc.get("custom_excise_tax_category_code")
+    exciseTxCatCd = "ECM" if getExciseTxCatCd == "Excise on Coal" else "EXEEG"
+
+    # Other fields
     useYn = doc.get("custom_used__unused")
     modrNm = doc.get("owner")
     modrId = doc.get("owner")
     regrId = doc.get("owner")
 
+    # Print all values
     print("🛒 Item Details:")
     print(f"Item Name       : {item_name}")
     print(f"TPIN            : {tpin}")
     print(f"BHF ID          : {bhfId}")
-    print(f"Origin Code     : {country_code} ")
+    print(f"Origin Code     : {country_code}")
     print(f"Item Type Code  : {itemTyCd}")
     print(f"Package Unit    : {packaging_unit_code}")
-    print(f"Quantity Unit   : {qty_unit_code} ")
+    print(f"Quantity Unit   : {qty_unit_code}")
     print(f"VAT Category    : {vatCatCd_code}")
     print(f"IPL Category    : {iplCatCd}")
     print(f"TL Category     : {tlCatCd}")
@@ -124,6 +134,7 @@ def log_item_changes(doc, method):
     print(f"Use (Y/N)       : {useYn}")
     print(f"Modified by     : {modrNm}")
     print(f"Registered ID   : {regrId}")
+
 
 	
 @frappe.whitelist()
