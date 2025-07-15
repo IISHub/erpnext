@@ -185,7 +185,6 @@ class StockEntry(StockController):
 			)
 
 
-
 	def before_insert(self):
 		stock_data = self.as_dict()
 		print("Stock Data:", stock_data)
@@ -205,12 +204,25 @@ class StockEntry(StockController):
 			"totTaxblAmt": sum(item.get("custom_tax_able_amount", 0) for item in stock_data.get("items", [])),
 			"totTaxAmt": sum(item.get("custom_tax_amount", 0) for item in stock_data.get("items", [])),
 			"totAmt": sum(item.get("amount", 0) for item in stock_data.get("items", [])),
+			"totDcAmt": "1000",  # Required default
+			"pkg": "2",          # Required default
 			"remark": stock_data.get("remarks"),
 			"regrId": stock_data.get("owner"),
 			"regrNm": stock_data.get("owner"),
 			"modrNm": stock_data.get("owner"),
 			"modrId": stock_data.get("owner"),
 			"itemList": []
+		}
+
+		vat_code_map = {
+			"StandardRated": "A",
+			"MinimumTaxableValue": "B",
+			"Exports": "C1",
+			"ZeroRatingLocalPurchases": "C2",
+			"ZeroRatedByNature": "C3",
+			"Exempt": "D",
+			"Disbursement": "E",
+			"ReverseVAT": "RVAT"
 		}
 
 		for idx, item in enumerate(stock_data.get("items", []), start=1):
@@ -225,30 +237,40 @@ class StockEntry(StockController):
 				frappe.log_error(f"Item not found: {item_code}")
 				continue
 
+			custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
+			vatCatCd = vat_code_map.get(custom_vat, "A")
+
 			mapped_item = {
 				"itemSeq": idx,
 				"itemCd": item_code,
-				"itemClsCd": item_doc.get("item_class_code") or "",
+				"itemClsCd": item_doc.get("item_class_code") or "NA",  # ✅ Default fallback
 				"itemNm": item_doc.item_name,
-				"pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "", 
-				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "",  
-				"vatCatCd": item_doc.get("custom_vat") or "",                        
-				"qty": item.get("qty"),
-				"prc": item.get("basic_rate"),
+				"pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "PKG",  # placeholder if needed
+				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",      # placeholder if needed
+				"vatCatCd": vatCatCd,
+				"qty": item.get("qty", 0),
+				"prc": item.get("basic_rate", 0),
 				"splyAmt": item.get("custom_supply_amount", 0),
 				"taxblAmt": item.get("custom_tax_able_amount", 0),
-				"vatCatCd": item_doc.get("custom_vat_category_code") or "",
 				"taxAmt": item.get("custom_tax_amount", 0),
-				"totAmt": item.get("amount", 0)
+				"totAmt": item.get("amount", 0),
+				"totDcAmt": item.get("totDcAmt", "1000"),  # ✅ Required default
+				"pkg": item.get("pkg", "1")                # ✅ Required default
 			}
 
 			payload["itemList"].append(mapped_item)
 
 		print("Final Payload Before API:", payload)
 
-		client = ZRAClient()
-		client.save_stock(payload)
-
+		try:
+			client = ZRAClient()
+			response = client.save_stock(payload)
+			print("✅ ZRA Save Stock Success:", response)
+			if response.get("resultCd") != "000":
+				frappe.throw(f"ZRA returned error: {response.get('resultMsg')}")
+		except Exception as e:
+			frappe.log_error(title="❌ ZRA Save Stock Failed", message=str(e))
+			frappe.throw(f"ZRA Error: {e}")
 
 
 

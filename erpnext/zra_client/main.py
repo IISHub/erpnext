@@ -133,40 +133,30 @@ class ZRAClient:
             packaging_unit = item.get("pkgUnitCd")
             qty_unit = item.get("qtyUnitCd")
 
-            print('Packaging', packaging_unit, 'Qty units (raw):', qty_unit)
-
-         
-            # Resolve packaging unit
             try:
-                print(f"Making request to: http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/")
                 r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/", timeout=5)
-                print("Packaging Unit Request:", r)
                 r.raise_for_status()
-                packaging_unit_code = r.json().get("code", "")
+                packaging_unit_code = r.json().get("code")
+                if not packaging_unit_code:
+                    raise ValueError("No code returned for packaging unit")
             except Exception as e:
-                print("Exception occurred:", e)
-                frappe.throw(f"Failed to get packaging unit code for {packaging_unit}: {e}")
-            
-            # Resolve qty unit
+                raise Exception(f"Packaging unit error ({packaging_unit}): {e}")
+
             try:
                 r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{qty_unit}/", timeout=5)
                 r.raise_for_status()
-                qty_unit_code = r.json().get("code", "")
+                qty_unit_code = r.json().get("code")
+                if not qty_unit_code:
+                    raise ValueError("No code returned for quantity unit")
             except Exception as e:
-                frappe.throw(f"Failed to get quantity unit code for {qty_unit}: {e}")
+                raise Exception(f"Quantity unit error ({qty_unit}): {e}")
 
-
-
-            # Replace raw values
             item["pkgUnitCd"] = packaging_unit_code
             item["qtyUnitCd"] = qty_unit_code
 
-        # Send the payload to ZRA system
         try:
             response = requests.post(self.save_stock_url, json=payload, timeout=10)
-            print("Save Stock Response Status:", response.status_code)
             response.raise_for_status()
-            print("Save Stock Response JSON:", json.dumps(response.json(), indent=4))
             return response.json()
         except requests.RequestException as e:
-            frappe.throw(f"Failed to save stock in ZRA: {e}")
+            raise Exception(f"Failed to save stock in ZRA: {e}")
