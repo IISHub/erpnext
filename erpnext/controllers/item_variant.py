@@ -7,9 +7,13 @@ import json
 
 import requests
 
+
 import frappe
 from frappe import _
 from frappe.utils import cstr, flt
+
+
+
 
 from erpnext.utilities.product import get_item_codes_by_attributes
 
@@ -27,113 +31,46 @@ class ItemTemplateCannotHaveStock(frappe.ValidationError):
 
 
 
+
+import requests
+import frappe
+from erpnext.zra_client.main import ZRAClient
+
+
 def log_item_changes(doc, method):
-    """Log all values of Item and highlight changes"""
-
     if doc.flags.in_insert:
-        return  # New item creation; no comparison needed
-
-    old_doc = doc.get_doc_before_save()
-    if not old_doc:
-        print("⚠️ No old doc found for comparison")
         return
 
-    import requests
-
+    item_code = doc.get("item_code")
     item_name = doc.get("item_name")
-    tpin = 18288282828
-    bhfId = "0000"
-
-    # Get country code
-    orgnNatCd = doc.get("custom_origin_place_code")
-    try:
-        response = requests.get(f"http://192.168.1.146:9010/country/{orgnNatCd}/", timeout=5)
-        response.raise_for_status()
-        country_data = response.json()
-        country_code = country_data.get("code")
-        if not country_code:
-            frappe.throw(f"Country code not found in API response for '{orgnNatCd}'.")
-    except requests.RequestException as e:
-        frappe.throw(f"Failed to get country code for '{orgnNatCd}': {e}")
-
-    # Get product type and convert to item type code
     product_type = doc.get("custom_product_type")
-    itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
-
-    # Get packaging unit code
-    pkgUnitCd = doc.get("custom_packaging_unit_code")
-    try:
-        response = requests.get(f"http://192.168.1.146:9010/packaging-unit-code/{pkgUnitCd}/", timeout=5)
-        response.raise_for_status()
-        packaging_data = response.json()
-        packaging_unit_code = packaging_data.get("code")
-        if not packaging_unit_code:
-            frappe.throw(f"Packaging unit code not found for '{pkgUnitCd}'.")
-    except requests.RequestException as e:
-        frappe.throw(f"Failed to get packaging unit code for '{pkgUnitCd}': {e}")
-
-    # Get quantity unit of measure code
-    qtyUnitCd = doc.get("custom_units_of_measure")
-    try:
-        unit_response = requests.get(f"http://192.168.1.146:9010/unitofmeasure/{qtyUnitCd}/", timeout=5)
-        unit_response.raise_for_status()
-        unit_data = unit_response.json()
-        qty_unit_code = unit_data.get("code")
-        if not qty_unit_code:
-            frappe.throw("Error Getting Quantity unit code.")
-    except requests.RequestException as e:
-        frappe.throw(f"Failed to get unit code for '{qtyUnitCd}': {e}")
-
-    # Get VAT category code
-    vatCatCd = doc.get("custom_vat")
-    vat_code_map = {
-        "StandardRated": "A",
-        "MinimumTaxableValue": "B",
-        "Exports": "C1",
-        "ZeroRatingLocalPurchases": "C2",
-        "ZeroRatedByNature": "C3",
-        "Exempt": "D",
-        "Disbursement": "E",
-        "ReverseVAT": "RVAT"
-    }
-    vatCatCd_code = vat_code_map.get(vatCatCd)
-    if not vatCatCd_code:
-        frappe.throw(f"Invalid or unmapped VAT category: '{vatCatCd}'")
-
-    # IPL category code
-    getIplCatCd = doc.get("custom_ipl_category_code")
-    iplCatCd = "IPL1" if getIplCatCd == "Insurance Premium Levy" else "IPL2"
-
-    # TL category code
-    getTlCatCd = doc.get("custom_tl_category_code")
-    tlCatCd = "TL" if getTlCatCd == "Tourism Levy" else "F"
-
-    # Excise tax category code
-    getExciseTxCatCd = doc.get("custom_excise_tax_category_code")
-    exciseTxCatCd = "ECM" if getExciseTxCatCd == "Excise on Coal" else "EXEEG"
-
-    # Other fields
+    origin_place = doc.get("custom_origin_place_code")
+    packaging_unit = doc.get("custom_packaging_unit_code")
+    qty_unit = doc.get("custom_units_of_measure")
+    vat_category = doc.get("custom_vat")
+    ipl_category = doc.get("custom_ipl_category_code")
+    tl_category = doc.get("custom_tl_category_code")
+    excise_tax_category = doc.get("custom_excise_tax_category_code")
     useYn = doc.get("custom_used__unused")
-    modrNm = doc.get("owner")
-    modrId = doc.get("owner")
-    regrId = doc.get("owner")
+    user = doc.get("owner") or "ADMIN"
 
-    # Print all values
-    print("🛒 Item Details:")
-    print(f"Item Name       : {item_name}")
-    print(f"TPIN            : {tpin}")
-    print(f"BHF ID          : {bhfId}")
-    print(f"Origin Code     : {country_code}")
-    print(f"Item Type Code  : {itemTyCd}")
-    print(f"Package Unit    : {packaging_unit_code}")
-    print(f"Quantity Unit   : {qty_unit_code}")
-    print(f"VAT Category    : {vatCatCd_code}")
-    print(f"IPL Category    : {iplCatCd}")
-    print(f"TL Category     : {tlCatCd}")
-    print(f"Excise Tax Cat  : {exciseTxCatCd}")
-    print(f"Use (Y/N)       : {useYn}")
-    print(f"Modified by     : {modrNm}")
-    print(f"Registered ID   : {regrId}")
+    zra_client = ZRAClient()
+    response = zra_client.update_item(
+        item_code=item_code,
+        item_name=item_name,
+        product_type=product_type,
+        origin_place=origin_place,
+        packaging_unit=packaging_unit,
+        qty_unit=qty_unit,
+        vat_category=vat_category,
+        ipl_category=ipl_category,
+        tl_category=tl_category,
+        excise_tax_category=excise_tax_category,
+        useYn=useYn,
+        user=user
+    )
+    print("ZRA Response:", response)
+
 
 
 	

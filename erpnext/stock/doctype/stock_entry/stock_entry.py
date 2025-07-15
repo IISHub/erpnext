@@ -182,6 +182,9 @@ class StockEntry(StockController):
 				}
 			)
 
+	def before_insert(self):
+		print(1)
+
 	def onload(self):
 		for item in self.get("items"):
 			item.update(get_bin_details(item.item_code, item.s_warehouse))
