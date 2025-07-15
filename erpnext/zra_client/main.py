@@ -1,5 +1,7 @@
+import json
 import requests
 import frappe
+
 
 ZRA_LOCAL_BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0"
 ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
@@ -123,50 +125,48 @@ class ZRAClient:
         except requests.RequestException as e:
             frappe.throw(f"Failed to update item in ZRA: {e}")
 
+    def save_stock(self, payload=None):
+        if payload is None:
+            frappe.throw("Payload is required to save stock")
 
-    def save_stock(self):
-        payload = {
-                    "tpin": "1000000000",
-                    "bhfId": "000",
-                    "sarNo": 1,
-                    "orgSarNo": 0,
-                    "regTyCd": "M",
-                    "custTpin": "null",
-                    "custNm": "null",
-                    "custBhfId": "null",
-                    "sarTyCd": "02",
-                    "ocrnDt": "20240509",
-                    "totItemCnt": 1,
-                    "totTaxblAmt": 86.2069,
-                    "totTaxAmt": 13.7931,
-                    "totAmt": 100,
-                    "remark": "null",
-                    "regrId": "Admin",
-                    "regrNm": "Admin",
-                    "modrNm": "Admin",
-                    "modrId": "Admin",
-                    "itemList": [
-                        {
-                        "itemSeq": 1,
-                        "itemCd": "20044",
-                        "itemClsCd": "50102517",
-                        "itemNm": "Soupu dedede",
-                        "pkgUnitCd": "BA",
-                        "qtyUnitCd": "BE",
-                        "qty": 1,
-                        "prc": 100,
-                        "splyAmt": 100,
-                        "taxblAmt": 86.21,
-                        "vatCatCd": "A",
-                        "taxAmt": 13.79,
-                        "totAmt": 100
-                        }
-                    ]
-                    }
+        for item in payload.get("itemList", []):
+            packaging_unit = item.get("pkgUnitCd")
+            qty_unit = item.get("qtyUnitCd")
 
+            print('Packaging', packaging_unit, 'Qty units (raw):', qty_unit)
+
+         
+            # Resolve packaging unit
+            try:
+                print(f"Making request to: http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/")
+                r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/", timeout=5)
+                print("Packaging Unit Request:", r)
+                r.raise_for_status()
+                packaging_unit_code = r.json().get("code", "")
+            except Exception as e:
+                print("Exception occurred:", e)
+                frappe.throw(f"Failed to get packaging unit code for {packaging_unit}: {e}")
+            
+            # Resolve qty unit
+            try:
+                r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{qty_unit}/", timeout=5)
+                r.raise_for_status()
+                qty_unit_code = r.json().get("code", "")
+            except Exception as e:
+                frappe.throw(f"Failed to get quantity unit code for {qty_unit}: {e}")
+
+
+
+            # Replace raw values
+            item["pkgUnitCd"] = packaging_unit_code
+            item["qtyUnitCd"] = qty_unit_code
+
+        # Send the payload to ZRA system
         try:
             response = requests.post(self.save_stock_url, json=payload, timeout=10)
-            print(response)
-        
+            print("Save Stock Response Status:", response.status_code)
+            response.raise_for_status()
+            print("Save Stock Response JSON:", json.dumps(response.json(), indent=4))
+            return response.json()
         except requests.RequestException as e:
-            frappe.throw(f"Faild to save stock in ZRa: ", {e})
+            frappe.throw(f"Failed to save stock in ZRA: {e}")

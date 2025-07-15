@@ -5,6 +5,8 @@
 import json
 from collections import defaultdict
 
+import requests
+
 import frappe
 from frappe import _, bold
 from frappe.model.mapper import get_mapped_doc
@@ -80,7 +82,7 @@ class MaxSampleAlreadyRetainedError(frappe.ValidationError):
 from erpnext.controllers.stock_controller import StockController
 
 form_grid_templates = {"items": "templates/form_grid/stock_entry_grid.html"}
-
+from erpnext.zra_client.main import ZRAClient
 
 class StockEntry(StockController):
 	# begin: auto-generated types
@@ -182,8 +184,77 @@ class StockEntry(StockController):
 				}
 			)
 
+
+
 	def before_insert(self):
-		print(1)
+		stock_data = self.as_dict()
+		print("Stock Data:", stock_data)
+
+		payload = {
+			"tpin": "2484778002",
+			"bhfId": "000",
+			"sarNo": 1,
+			"orgSarNo": 0,
+			"regTyCd": "M",
+			"custTpin": None,
+			"custNm": None,
+			"custBhfId": None,
+			"sarTyCd": "02",
+			"ocrnDt": stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
+			"totItemCnt": len(stock_data.get("items", [])),
+			"totTaxblAmt": sum(item.get("custom_tax_able_amount", 0) for item in stock_data.get("items", [])),
+			"totTaxAmt": sum(item.get("custom_tax_amount", 0) for item in stock_data.get("items", [])),
+			"totAmt": sum(item.get("amount", 0) for item in stock_data.get("items", [])),
+			"remark": stock_data.get("remarks"),
+			"regrId": stock_data.get("owner"),
+			"regrNm": stock_data.get("owner"),
+			"modrNm": stock_data.get("owner"),
+			"modrId": stock_data.get("owner"),
+			"itemList": []
+		}
+
+		for idx, item in enumerate(stock_data.get("items", []), start=1):
+			item_code = item.get("item_code")
+			if not item_code:
+				frappe.log_error("Missing item_code in Stock Entry items")
+				continue
+
+			try:
+				item_doc = frappe.get_doc("Item", item_code)
+			except frappe.DoesNotExistError:
+				frappe.log_error(f"Item not found: {item_code}")
+				continue
+
+			mapped_item = {
+				"itemSeq": idx,
+				"itemCd": item_code,
+				"itemClsCd": item_doc.get("item_class_code") or "",
+				"itemNm": item_doc.item_name,
+				"pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "", 
+				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "",  
+				"vatCatCd": item_doc.get("custom_vat") or "",                        
+				"qty": item.get("qty"),
+				"prc": item.get("basic_rate"),
+				"splyAmt": item.get("custom_supply_amount", 0),
+				"taxblAmt": item.get("custom_tax_able_amount", 0),
+				"vatCatCd": item_doc.get("custom_vat_category_code") or "",
+				"taxAmt": item.get("custom_tax_amount", 0),
+				"totAmt": item.get("amount", 0)
+			}
+
+			payload["itemList"].append(mapped_item)
+
+		print("Final Payload Before API:", payload)
+
+		client = ZRAClient()
+		client.save_stock(payload)
+
+
+
+
+
+
+
 
 	def onload(self):
 		for item in self.get("items"):
