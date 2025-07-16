@@ -6,6 +6,8 @@ import frappe
 ZRA_LOCAL_BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0"
 ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
 ZRA_UPDATE_ITEM = "/items/updateItem"
+ZRA_SAVE_STOCK_MASTER = "/stockMaster/saveStockMaster"
+ZRA_SAVE_PURCHASE = "/trnsPurchase/savePurchase"
 
 BRANCH_CODE = "000"
 TPIN = "2484778002"
@@ -15,6 +17,8 @@ class ZRAClient:
         self.base_url = ZRA_LOCAL_BASE_URL
         self.update_url = f"{self.base_url}{ZRA_UPDATE_ITEM}"
         self.save_stock_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
+        self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
+        self.save_purchase_url = f"{self.base_url}{ZRA_SAVE_PURCHASE}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
 
@@ -160,3 +164,43 @@ class ZRAClient:
             return response.json()
         except requests.RequestException as e:
             raise Exception(f"Failed to save stock in ZRA: {e}")
+        
+
+    def save_stock_master(self, request):
+        try:
+            regrNm = "timeastw@gmail.com"
+            regrId = "timeastw@gmail.com"
+            modrNm = "timeastw@gmail.com"
+            modrId = "timeastw@gmail.com"
+            itemCd = "111111111111"
+            rsdQty = 1
+
+            payload = {
+                "tpin": TPIN,
+                "branchCode": BRANCH_CODE,
+                "registrarName": regrNm,
+                "registrarId": regrId,
+                "modifierName": modrNm,
+                "modifierId": modrId,
+                "itemCode": itemCd,
+                "residualQty": rsdQty
+            }
+
+            response = requests.post(self.save_stock_master_url, json=payload)
+            frappe.logger().info(f"Stock Master Response [{response.status_code}]: {response.text}")
+            response.raise_for_status()
+
+        except requests.RequestException as e:
+            frappe.log_error(title="❌ Failed to save stock master", message=str(e))
+            raise Exception(f"❌ Failed to save stock master: {e}")
+        
+    def save_purchase_manually(self):
+        try:
+            payload = []
+            response = requests.post(self.save_purchase_url, json=payload)
+        except requests.RequestException as e:
+            frappe.log_error(title="❌ Failed to save purchase", message=str(e))
+            raise Exception(f"❌ Failed to save purchase: {e}")
+
+
+

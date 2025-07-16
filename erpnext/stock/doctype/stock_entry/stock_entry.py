@@ -189,6 +189,8 @@ class StockEntry(StockController):
 		stock_data = self.as_dict()
 		print("Stock Data:", stock_data)
 
+		items = stock_data.get("items", [])
+
 		payload = {
 			"tpin": "2484778002",
 			"bhfId": "000",
@@ -200,12 +202,10 @@ class StockEntry(StockController):
 			"custBhfId": None,
 			"sarTyCd": "02",
 			"ocrnDt": stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
-			"totItemCnt": len(stock_data.get("items", [])),
-			"totTaxblAmt": sum(item.get("custom_tax_able_amount", 0) for item in stock_data.get("items", [])),
-			"totTaxAmt": sum(item.get("custom_tax_amount", 0) for item in stock_data.get("items", [])),
-			"totAmt": sum(item.get("amount", 0) for item in stock_data.get("items", [])),
-			"totDcAmt": "1000",  # Required default
-			"pkg": "2",          # Required default
+			"totItemCnt": len(items),
+			"totTaxblAmt": sum(item.get("custom_tax_able_amount", 0) for item in items),
+			"totTaxAmt": sum(item.get("custom_tax_amount", 0) for item in items),
+			"totAmt": sum(item.get("amount", 0) for item in items),
 			"remark": stock_data.get("remarks"),
 			"regrId": stock_data.get("owner"),
 			"regrNm": stock_data.get("owner"),
@@ -225,7 +225,7 @@ class StockEntry(StockController):
 			"ReverseVAT": "RVAT"
 		}
 
-		for idx, item in enumerate(stock_data.get("items", []), start=1):
+		for idx, item in enumerate(items, start=1):
 			item_code = item.get("item_code")
 			if not item_code:
 				frappe.log_error("Missing item_code in Stock Entry items")
@@ -237,25 +237,28 @@ class StockEntry(StockController):
 				frappe.log_error(f"Item not found: {item_code}")
 				continue
 
+			qty = item.get("qty", 0)
+			price = item.get("custom_price", 0)
+
 			custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
 			vatCatCd = vat_code_map.get(custom_vat, "A")
 
 			mapped_item = {
 				"itemSeq": idx,
 				"itemCd": item_code,
-				"itemClsCd": item_doc.get("item_class_code") or "NA",  # ✅ Default fallback
+				"itemClsCd": item_doc.get("item_class_code") or "NA",
 				"itemNm": item_doc.item_name,
-				"pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "PKG",  # placeholder if needed
-				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",      # placeholder if needed
+				"pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "PKG",
+				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",
 				"vatCatCd": vatCatCd,
-				"qty": item.get("qty", 0),
-				"prc": item.get("basic_rate", 0),
-				"splyAmt": item.get("custom_supply_amount", 0),
+				"qty": qty,
+				"prc": price,
+				"splyAmt": round(qty * price, 2),
 				"taxblAmt": item.get("custom_tax_able_amount", 0),
 				"taxAmt": item.get("custom_tax_amount", 0),
 				"totAmt": item.get("amount", 0),
-				"totDcAmt": item.get("totDcAmt", "1000"),  # ✅ Required default
-				"pkg": item.get("pkg", "1")                # ✅ Required default
+				"totDcAmt": item.get("totDcAmt", 0), 
+				"pkg": item.get("pkg", 1)
 			}
 
 			payload["itemList"].append(mapped_item)
@@ -265,12 +268,17 @@ class StockEntry(StockController):
 		try:
 			client = ZRAClient()
 			response = client.save_stock(payload)
+
+			res = client.save_stock_master(request=requests)
+			print(res)
+
 			print("✅ ZRA Save Stock Success:", response)
 			if response.get("resultCd") != "000":
 				frappe.throw(f"ZRA returned error: {response.get('resultMsg')}")
 		except Exception as e:
 			frappe.log_error(title="❌ ZRA Save Stock Failed", message=str(e))
 			frappe.throw(f"ZRA Error: {e}")
+
 
 
 
