@@ -8,6 +8,7 @@ ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
 ZRA_UPDATE_ITEM = "/items/updateItem"
 ZRA_SAVE_STOCK_MASTER = "/stockMaster/saveStockMaster"
 ZRA_SAVE_PURCHASE = "/trnsPurchase/savePurchase"
+ZRA_SALE = "/trnsSales/saveSales"
 
 BRANCH_CODE = "000"
 TPIN = "2484778002"
@@ -19,6 +20,7 @@ class ZRAClient:
         self.save_stock_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
         self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
         self.save_purchase_url = f"{self.base_url}{ZRA_SAVE_PURCHASE}"
+        self.sale_url = f"{self.base_url}{ZRA_SALE}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
 
@@ -194,13 +196,54 @@ class ZRAClient:
             frappe.log_error(title="❌ Failed to save stock master", message=str(e))
             raise Exception(f"❌ Failed to save stock master: {e}")
         
-    def save_purchase_manually(self):
+    def save_purchase_manually(self, payload):
+
+        print("🌐 Saving to:", self.save_purchase_url)
+
         try:
-            payload = []
-            response = requests.post(self.save_purchase_url, json=payload)
+            response = requests.post(self.save_purchase_url, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            print("📨 Purchase API Response:", data)
+
+            if data.get("resultCd") != "000":
+                frappe.throw(f"❌ Purchase save failed: {data.get('resultMsg')}")
+
         except requests.RequestException as e:
             frappe.log_error(title="❌ Failed to save purchase", message=str(e))
             raise Exception(f"❌ Failed to save purchase: {e}")
+
+        
+    def normal_sale(self):
+        try:
+            response = requests.post(self.sale_url)
+
+        except requests.RequestException as e:
+            frappe.log_error(title="❌ Failed to normal sale"
+            , message=str(e))
+            raise Exception(f"❌ Failed to normal sale: {e}")
+        
+    def sale_credit_note(self):
+        try:
+            response = requests.post(self.sale_url)
+
+        except requests.RequestException as e:
+            frappe.log_error(title="❌ Failed to sale credit note"
+            , message=str(e))
+            raise Exception(f"❌ Failed to normal sale: {e}")
+        
+    def sale_debit_note(self):
+        try:
+            response = requests.post(self.sale_url)
+
+        except requests.RequestException as e:
+            frappe.log_error(title="❌ Failed to sale debit note"
+            , message=str(e))
+            raise Exception(f"❌ Failed to normal sale: {e}")
+        
+
+
 
 
 

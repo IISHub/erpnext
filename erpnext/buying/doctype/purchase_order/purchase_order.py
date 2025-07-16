@@ -4,6 +4,8 @@
 
 import json
 
+import requests
+
 import frappe
 from frappe import _, msgprint
 from frappe.desk.notifications import clear_doctype_notifications
@@ -186,7 +188,7 @@ class PurchaseOrder(BuyingController):
 				"percent_join_field": "material_request",
 			}
 		]
-
+		
 	def onload(self):
 		supplier_tds = frappe.db.get_value("Supplier", self.supplier, "tax_withholding_category")
 		self.set_onload("supplier_tds", supplier_tds)
@@ -198,6 +200,113 @@ class PurchaseOrder(BuyingController):
 
 	def validate(self):
 		super().validate()
+		import frappe
+		import requests
+		from erpnext.zra_client.main import ZRAClient
+
+		purchase_data = self.as_dict()
+
+		payload = {
+			"tpin": "2484778002",
+			"bhfId": "000",
+			"cisInvcNo": purchase_data.get("name"),
+			"regTyCd": "M",
+			"pchsTyCd": "N",
+			"rcptTyCd": "P",
+			"pmtTyCd": "01",
+			"pchsSttsCd": "02",
+			"cfmDt": frappe.utils.now_datetime().strftime("%Y%m%d%H%M%S"),
+			"pchsDt": frappe.utils.now_datetime().strftime("%Y%m%d"),
+			"cnclReqDt": "",
+			"cnclDt": "",
+			"totItemCnt": len(self.items),
+			"totTaxblAmt": float(self.total or 0),
+			"totTaxAmt": 0.0,
+			"totAmt": float(self.grand_total or 0),
+			"remark": "Auto from ERP",
+			"regrNm": self.owner,
+			"regrId": self.owner,
+			"modrNm": self.owner,
+			"modrId": self.owner,
+			"itemList": []
+		}
+
+		for idx, item in enumerate(self.items):
+			item_code = item.get("item_code")
+			item_name = item.get("item_name")
+
+			try:
+				item_doc = frappe.get_doc("Item", item_code)
+			except Exception as e:
+				frappe.throw(f"❌ Failed to fetch Item {item_code}: {e}")
+
+			get_packaging_unit = item_doc.custom_packaging_unit_code or "PCS"
+			try:
+				r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{get_packaging_unit}/", timeout=5)
+				r.raise_for_status()
+				packaging_unit_code = r.json().get("code")
+				if not packaging_unit_code:
+					raise ValueError("No code returned for packaging unit")
+			except Exception as e:
+				raise Exception(f"Packaging unit error ({get_packaging_unit}): {e}")
+
+			get_qty_unit = item_doc.custom_units_of_measure or "PCS"
+			try:
+				r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{get_qty_unit}/", timeout=5)
+				r.raise_for_status()
+				qty_unit_code = r.json().get("code")
+				if not qty_unit_code:
+					raise ValueError("No code returned for quantity unit")
+			except Exception as e:
+				raise Exception(f"Quantity unit error ({get_qty_unit}): {e}")
+
+	
+			item_cls_cd = item_doc.get("unspsc_code") or "50102517"
+
+			payload["itemList"].append({
+				"itemSeq": idx + 1,
+				"itemCd": item_code,
+				"itemClsCd": item_cls_cd,
+				"itemNm": item_name,
+				"bcd": "",
+				"pkgUnitCd": packaging_unit_code,
+				"pkg": 1,
+				"qtyUnitCd": qty_unit_code,
+				"qty": float(item.get("qty") or 0),
+				"prc": float(item.get("rate") or 0),
+				"splyAmt": float(item.get("amount") or 0),
+				"dcRt": 0.0,
+				"dcAmt": 0.0,
+				"taxTyCd": "A",
+				"iplCatCd": "",
+				"tlCatCd": "",
+				"exciseCatCd": "",
+				"taxblAmt": float(item.get("amount") or 0),
+				"vatCatCd": "A",
+				"iplTaxblAmt":purchase_data.get("total"),
+				"tlTaxblAmt": purchase_data.get("total"),
+				"exciseTaxblAmt": purchase_data.get("total"),
+				"taxAmt": purchase_data.get("total"),
+				"iplAmt": purchase_data.get("total"),
+				"tlAmt": purchase_data.get("total"),
+				"exciseTxAmt": purchase_data.get("total"),
+				"totAmt": float(item.get("amount") or 0)
+			})
+
+		print("📦 Final Purchase Payload:", frappe.as_json(payload, indent=2))
+
+		obj = ZRAClient()
+		obj.save_purchase_manually(payload)
+		self.purchase_payload = payload
+
+
+
+
+
+
+
+
+
 
 		self.set_status()
 
