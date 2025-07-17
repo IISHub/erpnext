@@ -122,11 +122,9 @@ class ZRAClient:
         tlCatCd = "TL" if tl_category == "Tourism Levy" else "F"
         exciseTxCatCd = "ECM" if excise_tax_category == "Excise on Coal" else "EXEEG"
 
-        # Validate use_yn
         if use_yn not in ("Y", "N"):
-            use_yn = "Y" # Default to 'Y' if invalid value is provided
+            use_yn = "Y"
 
-        # --- Construct Payload ---
 
         payload = {
             "tpin": self.tpin,
