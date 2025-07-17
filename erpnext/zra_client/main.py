@@ -239,9 +239,10 @@ class ZRAClient:
             frappe.log_error(title="❌ Failed to send normal sale", message=str(e))
             raise Exception(f"❌ Network or connection error: {e}")
 
-    def sale_credit_note(self):
+    def sale_credit_note(self, payload):
         try:
-            response = requests.post(self.sale_url)
+            response = requests.post(self.sale_url, json=payload)
+            return response
 
         except requests.RequestException as e:
             frappe.log_error(title="❌ Failed to sale credit note"

@@ -260,6 +260,20 @@ class Item(Document):
 			product_type = item_data.get("custom_product_type", "").strip()
 			itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
 
+			#Get 
+			get_item_class_code = item_data.get("custom_item_class_code", "").strip()
+			try:
+				req = requests.get(f"http://0.0.0.0:7000/api/get-item-class-by-name/{get_item_class_code}/", timeout=5)
+				res = req.raise_for_status()
+				req.raise_for_status()
+				data = req.json()
+				itemClsCd = data.get("itemClsCd")
+
+
+			except requests.RequestException as e:
+				frappe.throw(f"{get_item_class_code}': {e} Not found '")
+
+
 			# Quantity Unit Code
 			unit_name = item_data.get("custom_units_of_measure", "Pair").strip()
 			try:
@@ -336,7 +350,7 @@ class Item(Document):
 				"tpin": client.tpin,
 				"bhfId": client.bhf_id,
 				"itemCd": item_code,
-				"itemClsCd": "43322555",
+				"itemClsCd": itemClsCd,
 				"itemTyCd": itemTyCd,
 				"itemNm": item_data.get("item_name") or "Unnamed",
 				"itemStdNm": "Corn Flakes",
