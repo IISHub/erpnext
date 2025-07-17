@@ -215,15 +215,30 @@ class ZRAClient:
             raise Exception(f"❌ Failed to save purchase: {e}")
 
         
-    def normal_sale(self):
+    def normal_sale(self, payload):
         try:
-            response = requests.post(self.sale_url)
+            response = requests.post(self.sale_url, json=payload)
+            print("🔄 Raw response object:", response)
+            print("📦 Response Status Code:", response.status_code)
+
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    print("✅ ZRA Response JSON:", data)
+
+                    if data.get("resultCd") != "000":
+                        raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
+                    return data
+
+                except ValueError:
+                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+            else:
+                raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to normal sale"
-            , message=str(e))
-            raise Exception(f"❌ Failed to normal sale: {e}")
-        
+            frappe.log_error(title="❌ Failed to send normal sale", message=str(e))
+            raise Exception(f"❌ Network or connection error: {e}")
+
     def sale_credit_note(self):
         try:
             response = requests.post(self.sale_url)

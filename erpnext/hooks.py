@@ -668,6 +668,10 @@ fields_for_group_similar_items = ["qty", "amount"]
 doc_events = {
     "Item": {
         "before_save": "erpnext.controllers.item_variant.log_item_changes",
-        "on_update": "erpnext.controllers.item_variant.log_item_changes"
-    }
+        "on_update": "erpnext.controllers.item_variant.log_item_changes",
+        "on_cancel": "erpnext.controllers.item_variant.track_cancel"
+    },
+  
+  
 }
+

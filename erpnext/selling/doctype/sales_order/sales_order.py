@@ -3,8 +3,9 @@
 
 
 import json
+import random
 from typing import Literal
-
+from datetime import datetime
 import frappe
 import frappe.utils
 from frappe import _, qb
@@ -42,7 +43,7 @@ from erpnext.stock.get_item_details import (
 	get_price_list_rate,
 )
 from erpnext.stock.stock_balance import get_reserved_qty, update_bin_qty
-
+from erpnext.zra_client.main import ZRAClient
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
 
 
@@ -191,6 +192,8 @@ class SalesOrder(SellingController):
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+	
+
 
 	def onload(self) -> None:
 		super().onload()
@@ -202,12 +205,155 @@ class SalesOrder(SellingController):
 		if has_reserved_stock(self.doctype, self.name):
 			self.set_onload("has_reserved_stock", True)
 
-	def before_validate(self):
-		self.set_has_unit_price_items()
-		self.flags.allow_zero_qty = self.has_unit_price_items
-
 	def validate(self):
 		super().validate()
+
+		sell_order = self.as_dict()
+		ZRA_OBJ = ZRAClient()
+		
+		# Basic invoice setup
+		tpin = ZRA_OBJ.tpin
+		branch_code = ZRA_OBJ.branch_code
+		cisInvcNo = f'CIS{sell_order.get("name","001")}-{random.randint(1000,9999)}'
+		customer_name = sell_order.get("customer") or sell_order.get("customer_name") or ""
+		created_by = sell_order.get("owner") or "system"
+		currency = sell_order.get("currency") or "ZMW"
+
+		# Date/time formatting
+		cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
+		salesDt = datetime.now().strftime('%Y%m%d')
+
+		# Initialize all totals
+		totals = {
+			'taxable': 0.0,
+			'vat': 0.0,
+			'discount': 0.0,
+			'gross': 0.0,
+			'net': 0.0
+		}
+
+		# Process items
+		item_list = []
+		for i, item in enumerate(sell_order.get("items", []), 1):
+			item_code = item.get("item_code")
+			item_doc = frappe.get_doc("Item", item_code)
+			
+			# Basic calculations
+			qty = flt(item.get("qty", 1))
+			price = flt(item_doc.get("custom_default_unit_price", 0))
+			gross = flt(qty * price, 4)
+			
+			# Discount handling
+			discount_pct = flt(item.get("discount_percentage", 0))
+			discount_amt = flt(gross * discount_pct / 100, 4)
+			net = flt(gross - discount_amt, 4)
+			
+			# VAT calculations (using standard VAT category A)
+			taxable = flt(net / 1.16, 4) 
+			vat = flt(taxable * 0.16, 4)
+			
+			# Update totals
+			totals['gross'] = flt(totals['gross'] + gross, 4)
+			totals['discount'] = flt(totals['discount'] + discount_amt, 4)
+			totals['net'] = flt(totals['net'] + net, 4)
+			totals['taxable'] = flt(totals['taxable'] + taxable, 4)
+			totals['vat'] = flt(totals['vat'] + vat, 4)
+
+			item_list.append({
+				"itemSeq": i,
+				"itemCd": item_code,
+				"itemClsCd": "50102518",
+				"itemNm": item.get("item_name"),
+				"bcd": item_doc.get("custom_origin_place_code", ""),
+				"pkgUnitCd": "WRAP",
+				"pkg": 1,
+				"qtyUnitCd": "EA",
+				"qty": qty,
+				"prc": flt(price, 4),
+				"splyAmt": flt(gross, 4),
+				"dcRt": flt(discount_pct, 4),
+				"dcAmt": flt(discount_amt, 4),
+				"vatCatCd": "A", 
+				"vatTaxblAmt": flt(taxable, 4),
+				"vatAmt": flt(vat, 4),
+				"totAmt": flt(taxable + vat, 4),
+				"exciseTxCatCd": "",
+				"tlCatCd": "",
+				"iplCatCd": "",
+				"exciseTaxblAmt": 0.0,
+				"tlTaxblAmt": 0.0,
+				"iplTaxblAmt": 0.0,
+				"iplAmt": 0.0,
+				"tlAmt": 0.0,
+				"exciseTxAmt": 0.0
+			})
+
+		cash_discount_rate = flt(25.0, 4)
+		cash_discount_amt = flt(totals['net'] * cash_discount_rate / 100, 4)
+		final_amount = flt(totals['net'] - cash_discount_amt, 4)
+
+		payload = {
+			"tpin": tpin,
+			"bhfId": branch_code,
+			"orgInvcNo": 0,
+			"cisInvcNo": cisInvcNo,
+			"custNm": customer_name,
+			"custTpin": "2000000000",
+			"salesTyCd": "N",
+			"rcptTyCd": "S",
+			"pmtTyCd": "01",
+			"salesSttsCd": "02",
+			"cfmDt": cfmDt,
+			"salesDt": salesDt,
+			"totItemCnt": len(item_list),
+			"taxblAmtA": flt(totals['taxable'], 4),
+			"taxAmtA": flt(totals['vat'], 4),
+			"taxRtA": 16,
+			# Zero out other tax categories
+			"taxblAmtB": 0.0,
+			"taxblAmtC1": 0.0,
+			"taxblAmtC2": 0.0,
+			"taxblAmtC3": 0.0,
+			"taxblAmtD": 0.0,
+			"taxblAmtE": 0.0,
+			"taxblAmtF": 0.0,
+			"taxblAmtIpl1": 0.0,
+			"taxblAmtIpl2": 0.0,
+			"taxblAmtTl": 0.0,
+			"taxblAmtEcm": 0.0,
+			"taxblAmtExeeg": 0.0,
+			"taxblAmtRvat": 0.0,
+			"taxblAmtTot": 0.0,  # Not using TOT category
+			# Totals
+			"totTaxblAmt": flt(totals['taxable'], 4),
+			"totTaxAmt": flt(totals['vat'], 4),
+			"totAmt": flt(final_amount, 4),
+			# Cash discount
+			"cashDcRt": flt(cash_discount_rate, 4),
+			"cashDcAmt": flt(cash_discount_amt, 4),
+			# Other required fields
+			"itemList": item_list,
+			"currencyTyCd": currency,
+			"exchangeRt": "1",
+			"prchrAcptcYn": "N",
+			"regrId": created_by,
+			"regrNm": created_by,
+			"modrId": created_by,
+			"modrNm": created_by
+		}
+
+		try:
+			response = ZRA_OBJ.normal_sale(payload)
+			if response.get('resultCd') != '000':
+				frappe.throw(f"ZRA Error: {response.get('resultMsg')}")
+			return response
+		except Exception as e:
+			frappe.log_error(
+				title="ZRA Submission Failed",
+				message=f"Error: {str(e)}\nPayload: {json.dumps(payload, indent=2)}"
+			)
+			frappe.throw(f"Failed to submit to ZRA: {str(e)}")
+
 		self.validate_delivery_date()
 		self.validate_proj_cust()
 		self.validate_po()
@@ -453,6 +599,16 @@ class SalesOrder(SellingController):
 			self.create_stock_reservation_entries()
 
 	def on_cancel(self):
+		cancel_data = self.as_dict()
+		print(cancel_data)
+		if cancel_data.get("force_fail", True):  
+			raise Exception("Cancellation failed due to forced failure condition.")
+
+
+
+
+
+
 		self.ignore_linked_doctypes = (
 			"GL Entry",
 			"Stock Ledger Entry",
@@ -468,6 +624,9 @@ class SalesOrder(SellingController):
 
 		self.check_nextdoc_docstatus()
 		self.update_reserved_qty()
+
+
+	def on_update(self):
 		self.update_project()
 		self.update_prevdoc_status("cancel")
 
@@ -480,7 +639,7 @@ class SalesOrder(SellingController):
 		if self.coupon_code:
 			from erpnext.accounts.doctype.pricing_rule.utils import update_coupon_code_count
 
-			update_coupon_code_count(self.coupon_code, "cancelled")
+			update_coupon_code_count(self.coupon_code, "cancelled !!")
 
 	def update_project(self):
 		if frappe.get_single_value("Selling Settings", "sales_update_frequency") != "Each Transaction":
@@ -526,6 +685,7 @@ class SalesOrder(SellingController):
 			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(self.doctype, self.name))
 
 	def update_status(self, status):
+		print("******** update status ************")
 		self.check_modified_date()
 		self.set_status(update=True, status=status)
 		# Upon Sales Order Re-open, check for credit limit.
@@ -565,11 +725,13 @@ class SalesOrder(SellingController):
 		pass
 
 	def on_update_after_submit(self):
+		print("******** update status ************")
 		self.calculate_commission()
 		self.calculate_contribution()
 		self.check_credit_limit()
 
 	def before_update_after_submit(self):
+		print("******** update status ************")
 		self.validate_po()
 		self.validate_drop_ship()
 		self.validate_supplier_after_submit()
@@ -791,6 +953,7 @@ class SalesOrder(SellingController):
 
 
 def get_unreserved_qty(item: object, reserved_qty_details: dict) -> float:
+
 	"""Returns the unreserved quantity for the Sales Order Item."""
 
 	existing_reserved_qty = reserved_qty_details.get(item.name, 0)
@@ -1650,6 +1813,7 @@ def make_work_orders(items, sales_order, company, project=None):
 
 @frappe.whitelist()
 def update_status(status, name):
+	print("******** update status ************")
 	so = frappe.get_doc("Sales Order", name)
 	so.update_status(status)
 
@@ -1873,4 +2037,5 @@ def get_work_order_items(sales_order, for_raw_material_request=0):
 
 @frappe.whitelist()
 def get_stock_reservation_status():
+	print("******** update status ************")
 	return frappe.get_single_value("Stock Settings", "enable_stock_reservation")

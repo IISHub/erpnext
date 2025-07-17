@@ -37,6 +37,10 @@ import frappe
 from erpnext.zra_client.main import ZRAClient
 
 
+
+def track_cancel(doc, method):
+    frappe.logger().info(f"Sales Order {doc.name} cancelled by {frappe.session.user} at {frappe.utils.now()}")
+	
 def log_item_changes(doc, method):
     if doc.flags.in_insert:
         return

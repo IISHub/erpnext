@@ -240,6 +240,12 @@ class StockEntry(StockController):
 			qty = item.get("qty", 0)
 			price = item.get("custom_price", 0)
 
+
+			# ✅ Fix for missing valuation rate
+			if not item.get("valuation_rate") or item.get("valuation_rate") == 0:
+				item["valuation_rate"] = price or 0
+				item["allow_zero_valuation_rate"] = 1
+
 			custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
 			vatCatCd = vat_code_map.get(custom_vat, "A")
 

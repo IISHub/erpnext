@@ -233,9 +233,9 @@ class Item(Document):
 		from datetime import datetime
 		import requests
 		import json
-		import time
 		import frappe
 		from frappe.model.naming import make_autoname
+		from erpnext.zra_client.main import ZRAClient
 
 		print("Data being inserted:")
 		item_data = self.as_dict()
@@ -252,13 +252,15 @@ class Item(Document):
 			formatted_time = now.strftime('%Y%m%d%H%M%S')
 			print("Formatted Time:", formatted_time)
 
+			# Excise Tax Category Code
 			excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
 			exciseTxCatCd = "ECM" if excise_name == "Excise on Coal" else "EXEEG"
 
-			# Determine item type
+			# Product Type to Item Type Code
 			product_type = item_data.get("custom_product_type", "").strip()
 			itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
 
+			# Quantity Unit Code
 			unit_name = item_data.get("custom_units_of_measure", "Pair").strip()
 			try:
 				unit_response = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{unit_name}/", timeout=5)
@@ -267,26 +269,26 @@ class Item(Document):
 				print("Unit API Response:", unit_data)
 				qtyUnitCd = unit_data.get("code")
 				if not qtyUnitCd:
-					frappe.throw("Error Getting Quantity unit code.")
+					frappe.throw("Error getting Quantity unit code.")
 			except requests.RequestException as e:
 				frappe.throw(f"Failed to get unit code for '{unit_name}': {e}")
 
+			# Country of Origin Code
 			country_name = item_data.get("custom_origin_place_code", "").strip().upper()
 			try:
-				url = f"http://0.0.0.0:7000/country/{country_name}/"
-				response = requests.get(url, timeout=5)
+				response = requests.get(f"http://0.0.0.0:7000/country/{country_name}/", timeout=5)
 				response.raise_for_status()
 				country_data = response.json()
 				country_code = country_data.get("code")
 				if not country_code:
-					frappe.throw(f"Country code not found in API response for '{country_name}'.")
+					frappe.throw(f"Country code not found for '{country_name}'.")
 			except requests.RequestException as e:
 				frappe.throw(f"Failed to get country code for '{country_name}': {e}")
 
+			# Packaging Unit Code
 			custom_packaging_unit_code = item_data.get("custom_packaging_unit_code", "").strip()
 			try:
-				url = f"http://0.0.0.0:7000/packaging-unit-code/{custom_packaging_unit_code}/"
-				response = requests.get(url, timeout=5)
+				response = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{custom_packaging_unit_code}/", timeout=5)
 				response.raise_for_status()
 				packaging_data = response.json()
 				print("Packaging Unit API Response:", packaging_data)
@@ -296,9 +298,7 @@ class Item(Document):
 			except requests.RequestException as e:
 				frappe.throw(f"Failed to get packaging unit code for '{custom_packaging_unit_code}': {e}")
 
-			# ✅ Safely generate unique item_code
-			item_code = make_autoname("ITEM.#####")
-
+			# VAT Category Code Mapping
 			vat_code_map = {
 				"StandardRated": "A",
 				"MinimumTaxableValue": "B",
@@ -312,9 +312,26 @@ class Item(Document):
 			custom_vat = item_data.get("custom_vat", "").replace(" ", "").strip()
 			vatCatCd = vat_code_map.get(custom_vat, "A")
 
+			# IPL Category Code Mapping and Validation
+			getIplCatCd = item_data.get("custom_ipl_category_code", "").strip()
+			if not getIplCatCd:
+				frappe.throw("Insurance type is required.")
+
+			if getIplCatCd == "Insurance Premium Levy":
+				iplCatCd = "IPL1"
+			elif getIplCatCd in ["Re-Insurance", "Insurance"]:
+				iplCatCd = "IPL2"
+			else:
+				frappe.throw(f"Invalid insurance type '{getIplCatCd}'")
+
+			# Generate item_code
+			item_code = make_autoname("ITEM.#####")
+
+			# Price and User Info
 			created_by = item_data.get("owner", "System")
 			default_price = float(item_data.get("custom_default_unit_price", 0))
 
+			# Payload construction
 			payload = {
 				"tpin": client.tpin,
 				"bhfId": client.bhf_id,
@@ -327,7 +344,7 @@ class Item(Document):
 				"pkgUnitCd": packaging_unit_code,
 				"qtyUnitCd": qtyUnitCd,
 				"vatCatCd": vatCatCd,
-				"iplCatCd": "IPL1",
+				"iplCatCd": iplCatCd,
 				"tlCatCd": None,
 				"exciseTxCatCd": exciseTxCatCd,
 				"btchNo": None,
@@ -350,6 +367,7 @@ class Item(Document):
 
 			print("Payload being sent:", json.dumps(payload, indent=2))
 
+			# Post to external API
 			response = requests.post(client.url, headers=client.headers, json=payload, timeout=10)
 			print("POST Status Code:", response.status_code)
 
@@ -361,7 +379,7 @@ class Item(Document):
 
 			if response_data.get("resultCd") == "000":
 				frappe.msgprint("Item successfully synced with external system.")
-				self.item_code = item_code  # Set item_code on the doc
+				self.item_code = item_code
 			else:
 				frappe.throw(f"API Error: {response_data.get('resultMsg')}")
 
