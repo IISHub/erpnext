@@ -187,13 +187,16 @@ class StockEntry(StockController):
 
 	def before_insert(self):
 		stock_data = self.as_dict()
-		print("Stock Data:", stock_data)
-
 		items = stock_data.get("items", [])
+		zra_client = ZRAClient()
+
+		total_taxable = 0
+		total_tax = 0
+		total_amount = 0
 
 		payload = {
-			"tpin": "2484778002",
-			"bhfId": "000",
+			"tpin": zra_client.tpin,
+			"bhfId": zra_client.branch_code,
 			"sarNo": 1,
 			"orgSarNo": 0,
 			"regTyCd": "M",
@@ -203,9 +206,6 @@ class StockEntry(StockController):
 			"sarTyCd": "02",
 			"ocrnDt": stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
 			"totItemCnt": len(items),
-			"totTaxblAmt": sum(item.get("custom_tax_able_amount", 0) for item in items),
-			"totTaxAmt": sum(item.get("custom_tax_amount", 0) for item in items),
-			"totAmt": sum(item.get("amount", 0) for item in items),
 			"remark": stock_data.get("remarks"),
 			"regrId": stock_data.get("owner"),
 			"regrNm": stock_data.get("owner"),
@@ -225,6 +225,7 @@ class StockEntry(StockController):
 			"ReverseVAT": "RVAT"
 		}
 
+		# Process each item
 		for idx, item in enumerate(items, start=1):
 			item_code = item.get("item_code")
 			if not item_code:
@@ -237,19 +238,28 @@ class StockEntry(StockController):
 				frappe.log_error(f"Item not found: {item_code}")
 				continue
 
-			qty = item.get("qty", 0)
-			price = item.get("custom_price", 0)
-
-
-			# ✅ Fix for missing valuation rate
-			if not item.get("valuation_rate") or item.get("valuation_rate") == 0:
-				item["valuation_rate"] = price or 0
-				item["allow_zero_valuation_rate"] = 1
+			qty = flt(item.get("qty", 0))
+			price = flt(item.get("valuation_rate", 0)) or flt(item_doc.get("custom_default_unit_price", 0))
+			
+			if not price:
+				frappe.log_error(f"Zero price for item: {item_code}")
+				price = 0
 
 			custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
 			vatCatCd = vat_code_map.get(custom_vat, "A")
+			vat_rate = 0.16 if vatCatCd == "A" else 0
 
-			mapped_item = {
+			# Compute values
+			supply_amount = round(qty * price, 2)
+			taxable_amount = supply_amount if vatCatCd == "A" else 0
+			tax_amount = round(taxable_amount * vat_rate, 2)
+			total_item_amount = supply_amount + tax_amount
+
+			total_taxable += taxable_amount
+			total_tax += tax_amount
+			total_amount += total_item_amount
+
+			payload["itemList"].append({
 				"itemSeq": idx,
 				"itemCd": item_code,
 				"itemClsCd": item_doc.get("item_class_code") or "NA",
@@ -259,36 +269,68 @@ class StockEntry(StockController):
 				"vatCatCd": vatCatCd,
 				"qty": qty,
 				"prc": price,
-				"splyAmt": round(qty * price, 2),
-				"taxblAmt": item.get("custom_tax_able_amount", 0),
-				"taxAmt": item.get("custom_tax_amount", 0),
-				"totAmt": item.get("amount", 0),
-				"totDcAmt": item.get("totDcAmt", 0), 
-				"pkg": item.get("pkg", 1)
-			}
+				"splyAmt": supply_amount,
+				"taxblAmt": taxable_amount,
+				"taxAmt": tax_amount,
+				"totAmt": total_item_amount,
+				"totDcAmt": 0,
+				"pkg": 1
+			})
 
-			payload["itemList"].append(mapped_item)
+		# Update totals
+		payload.update({
+			"totTaxblAmt": total_taxable,
+			"totTaxAmt": total_tax,
+			"totAmt": total_amount
+		})
 
-		print("Final Payload Before API:", payload)
-
+		# Submit to ZRA
 		try:
 			client = ZRAClient()
 			response = client.save_stock(payload)
 
-			res = client.save_stock_master(request=requests)
-			print(res)
+			if response.get("resultCd") == "000":
+				create_by = stock_data.get("owner")
+				print("✅ ZRA Response OK. Proceeding with stock update...")
 
-			print("✅ ZRA Save Stock Success:", response)
-			if response.get("resultCd") != "000":
+				if not items:
+					print("⚠️ No items found to update in stock.")
+				else:
+					stock_items = []
+					for item in items:
+						item_code = item.get("item_code")
+						qty = flt(item.get("qty", 0))
+
+						if not item_code:
+							print("⚠️ Skipping item with no item_code.")
+							continue
+
+						stock_items.append({
+							"itemCd": item_code,
+							"rsdQty": qty
+						})
+
+					try:
+						save_stock_master = client.save_stock_master(
+							created_by=create_by,
+							stock_items=stock_items
+						)
+						print(f"✅ Stock Master Update Response:", save_stock_master)
+
+					except Exception as e:
+						frappe.log_error(
+							title=f"❌ Failed to update stock master",
+							message=str(e)
+			)
+
+			else:
+				print("❌ ZRA Response Code NOT '000'. Skipping stock master update.")
+				print("🧾 Full response:", response)
 				frappe.throw(f"ZRA returned error: {response.get('resultMsg')}")
+
 		except Exception as e:
 			frappe.log_error(title="❌ ZRA Save Stock Failed", message=str(e))
 			frappe.throw(f"ZRA Error: {e}")
-
-
-
-
-
 
 
 

@@ -1,6 +1,9 @@
-import json
+from datetime import datetime
 import requests
 import frappe
+import json
+
+
 
 
 ZRA_LOCAL_BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0"
@@ -8,6 +11,7 @@ ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
 ZRA_UPDATE_ITEM = "/items/updateItem"
 ZRA_SAVE_STOCK_MASTER = "/stockMaster/saveStockMaster"
 ZRA_SAVE_PURCHASE = "/trnsPurchase/savePurchase"
+ZRA_CREATE_CUSTOMER = "/branches/saveBrancheCustomers"
 ZRA_SALE = "/trnsSales/saveSales"
 INTERNAL_URL = "http://0.0.0.0:7000/"
 
@@ -20,11 +24,43 @@ class ZRAClient:
         self.internal_base_url = INTERNAL_URL 
         self.update_url = f"{self.base_url}{ZRA_UPDATE_ITEM}"
         self.save_stock_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
-        self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
+        self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_MASTER}"
         self.save_purchase_url = f"{self.base_url}{ZRA_SAVE_PURCHASE}"
         self.sale_url = f"{self.base_url}{ZRA_SALE}"
+        self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
+
+    
+    def create_customer(self, tpin, customer_name, email_id, mobile_no, created_by):
+        if not self.tpin:
+            raise ValueError("TPIN is required.")
+
+        payload = {
+            "tpin": TPIN,
+            "bhfId": BRANCH_CODE,
+            "custNo": mobile_no,      
+            "custTpin": tpin,      
+            "custNm": customer_name,              
+            "adrs": None,
+            "email":  email_id,
+            "faxNo": None,
+            "useYn": "Y",
+            "remark": None,
+            "regrNm": created_by,
+            "regrId": created_by,
+            "modrNm": created_by,
+            "modrId": created_by
+        }
+        print(payload)
+
+        try:
+            response = requests.post(self.create_customer_url, json=payload)
+            print("Status Code:", response.status_code)
+            print("Response:", response.text)
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"API request failed: {e}")
 
     def update_item(self, **kwargs):
         item_class_code = kwargs.get("item_class_code")
@@ -200,6 +236,7 @@ class ZRAClient:
             item["qtyUnitCd"] = qty_unit_code
 
         try:
+            print("Saving stock payload: ", payload)
             response = requests.post(self.save_stock_url, json=payload, timeout=10)
             response.raise_for_status()
             return response.json()
@@ -207,33 +244,53 @@ class ZRAClient:
             raise Exception(f"Failed to save stock in ZRA: {e}")
         
 
-    def save_stock_master(self, request):
+    def save_stock_master(self, created_by, stock_items):
         try:
-            regrNm = "timeastw@gmail.com"
-            regrId = "timeastw@gmail.com"
-            modrNm = "timeastw@gmail.com"
-            modrId = "timeastw@gmail.com"
-            itemCd = "111111111111"
-            rsdQty = 1
-
             payload = {
-                "tpin": TPIN,
-                "branchCode": BRANCH_CODE,
-                "registrarName": regrNm,
-                "registrarId": regrId,
-                "modifierName": modrNm,
-                "modifierId": modrId,
-                "itemCode": itemCd,
-                "residualQty": rsdQty
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "stockItemList": stock_items  
             }
 
-            response = requests.post(self.save_stock_master_url, json=payload)
-            frappe.logger().info(f"Stock Master Response [{response.status_code}]: {response.text}")
+            print("Stock Master Payload:", payload)
+
+            response = requests.post(
+                self.save_stock_master_url,
+                json=payload,
+                timeout=30
+            )
+
+
+            frappe.logger().info(
+                f"Stock Master Request: {payload}\n"
+                f"Response [{response.status_code}]: {response.text}"
+            )
+
             response.raise_for_status()
+            print("✅ Stock Master Response:", response.json())
+            return response.json()
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to save stock master", message=str(e))
-            raise Exception(f"❌ Failed to save stock master: {e}")
+            error_msg = f"Request failed for stock master: {str(e)}"
+            frappe.log_error(
+                title="❌ Failed to save stock master",
+                message=f"{error_msg}\nPayload: {payload}"
+            )
+            raise Exception(error_msg)
+
+        except ValueError as e:
+            error_msg = f"Invalid response for stock master: {str(e)}"
+            frappe.log_error(
+                title="❌ Stock Master Response Error",
+                message=error_msg
+            )
+            raise Exception(error_msg)
+
+
         
     def save_purchase_manually(self, payload):
 

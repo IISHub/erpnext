@@ -333,10 +333,9 @@ class Item(Document):
 
 			if getIplCatCd == "Insurance Premium Levy":
 				iplCatCd = "IPL1"
-			elif getIplCatCd in ["Re-Insurance", "Insurance"]:
-				iplCatCd = "IPL2"
 			else:
-				frappe.throw(f"Invalid insurance type '{getIplCatCd}'")
+				iplCatCd = "IPL2"
+	
 
 			# Generate item_code
 			item_code = make_autoname("ITEM.#####")
@@ -353,7 +352,6 @@ class Item(Document):
 				"itemClsCd": itemClsCd,
 				"itemTyCd": itemTyCd,
 				"itemNm": item_data.get("item_name") or "Unnamed",
-				"itemStdNm": "Corn Flakes",
 				"orgnNatCd": country_code,
 				"pkgUnitCd": packaging_unit_code,
 				"qtyUnitCd": qtyUnitCd,
