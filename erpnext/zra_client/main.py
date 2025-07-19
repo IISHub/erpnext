@@ -242,21 +242,24 @@ class ZRAClient:
             return response.json()
         except requests.RequestException as e:
             raise Exception(f"Failed to save stock in ZRA: {e}")
+
+    def update_stock_after_purchase_view(self, payload=None):
+        if payload is None:
+            frappe.throw("Payload is required to update stock after purchase")
+
+        try:
+            print("Updating stock after purchase payload: ", payload)
+            response = requests.post(self.save_stock_url, json=payload, timeout=10)
+            response.raise_for_status()
+            print("Stock update response:", response.text)
+            return response.json()
+        except requests.RequestException as e:
+            raise Exception(f"Failed to update stock after purchase in ZRA: {e}")
         
 
-    def save_stock_master(self, created_by, stock_items):
+    def save_stock_master(self, payload = None):
         try:
-            payload = {
-                "tpin": self.tpin,
-                "bhfId": self.branch_code,
-                "regrId": created_by,
-                "regrNm": created_by,
-                "modrNm": created_by,
-                "modrId": created_by,
-                "stockItemList": stock_items  
-            }
-
-            print("Stock Master Payload:", payload)
+        
 
             response = requests.post(
                 self.save_stock_master_url,
@@ -271,7 +274,6 @@ class ZRAClient:
             )
 
             response.raise_for_status()
-            print("✅ Stock Master Response:", response.json())
             return response.json()
 
         except requests.RequestException as e:
@@ -294,21 +296,16 @@ class ZRAClient:
         
     def save_purchase_manually(self, payload):
 
-        print("🌐 Saving to:", self.save_purchase_url)
-
         try:
             response = requests.post(self.save_purchase_url, json=payload, timeout=10)
             response.raise_for_status()
             data = response.json()
-
-            print("📨 Purchase API Response:", data)
-
-            if data.get("resultCd") != "000":
-                frappe.throw(f"❌ Purchase save failed: {data.get('resultMsg')}")
+            return data
 
         except requests.RequestException as e:
             frappe.log_error(title="❌ Failed to save purchase", message=str(e))
             raise Exception(f"❌ Failed to save purchase: {e}")
+
 
         
     def normal_sale(self, payload):

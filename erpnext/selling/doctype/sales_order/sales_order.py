@@ -305,16 +305,15 @@ class SalesOrder(SellingController):
 
 		payload = {
 			"tpin": tpin,
-			"bhfId": branch_code,
-			"orgInvcNo": "CISSAL-ORD-2025-00001-0000000000000000000137", 
+			"bhfId": branch_code, 
 			"cisInvcNo": cisInvcNo,
 			"custNm": customer_name,
 			"custTpin": "2000000000",
 			"salesTyCd": "N",
-			"rcptTyCd": "R",
+			"rcptTyCd": "S",
 			"pmtTyCd": "01",
-			"salesSttsCd": "02",
-			"rfdRsnCd": "01",
+			"salesSttsCd": "01",
+			# "rfdRsnCd": "01",
 			"cfmDt": cfmDt,
 			"salesDt": salesDt,
 			"totItemCnt": len(item_list),
@@ -353,8 +352,6 @@ class SalesOrder(SellingController):
 			"modrNm": created_by
 		}
 		print(payload)
-		
-		# frappe.throw("This validation will always fail.")
 		try:
 			response = ZRA_OBJ.normal_sale(payload)
 			if response.get('resultCd') != '000':

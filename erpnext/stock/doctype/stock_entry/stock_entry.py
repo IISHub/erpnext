@@ -225,7 +225,6 @@ class StockEntry(StockController):
 			"ReverseVAT": "RVAT"
 		}
 
-		# Process each item
 		for idx, item in enumerate(items, start=1):
 			item_code = item.get("item_code")
 			if not item_code:
@@ -239,18 +238,28 @@ class StockEntry(StockController):
 				continue
 
 			qty = flt(item.get("qty", 0))
-			price = flt(item.get("valuation_rate", 0)) or flt(item_doc.get("custom_default_unit_price", 0))
-			
-			if not price:
-				frappe.log_error(f"Zero price for item: {item_code}")
-				price = 0
+
+			# Try valuation_rate from Stock Entry item
+			valuation_rate = flt(item.get("valuation_rate", 0))
+
+			# Fallback to item default price
+			if not valuation_rate:
+				valuation_rate = flt(item_doc.get("custom_default_unit_price", 0))
+
+			# If valuation rate is still zero or missing, log error or handle zero valuation allowance
+			if valuation_rate == 0:
+				allow_zero_val_rate = item.get("allow_zero_valuation_rate", False)
+				if not allow_zero_val_rate:
+					frappe.throw(f"Valuation Rate missing for item: {item_code}. "
+								"Set valuation rate or enable 'Allow Zero Valuation Rate'.")
+				else:
+					frappe.log_error(f"Zero valuation rate allowed for item: {item_code}")
 
 			custom_vat = (item_doc.get("custom_vat") or "").replace(" ", "").strip()
 			vatCatCd = vat_code_map.get(custom_vat, "A")
 			vat_rate = 0.16 if vatCatCd == "A" else 0
 
-			# Compute values
-			supply_amount = round(qty * price, 2)
+			supply_amount = round(qty * valuation_rate, 2)
 			taxable_amount = supply_amount if vatCatCd == "A" else 0
 			tax_amount = round(taxable_amount * vat_rate, 2)
 			total_item_amount = supply_amount + tax_amount
@@ -268,7 +277,7 @@ class StockEntry(StockController):
 				"qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",
 				"vatCatCd": vatCatCd,
 				"qty": qty,
-				"prc": price,
+				"prc": valuation_rate,
 				"splyAmt": supply_amount,
 				"taxblAmt": taxable_amount,
 				"taxAmt": tax_amount,
@@ -277,14 +286,12 @@ class StockEntry(StockController):
 				"pkg": 1
 			})
 
-		# Update totals
 		payload.update({
 			"totTaxblAmt": total_taxable,
 			"totTaxAmt": total_tax,
 			"totAmt": total_amount
 		})
 
-		# Submit to ZRA
 		try:
 			client = ZRAClient()
 			response = client.save_stock(payload)
@@ -321,8 +328,7 @@ class StockEntry(StockController):
 						frappe.log_error(
 							title=f"❌ Failed to update stock master",
 							message=str(e)
-			)
-
+						)
 			else:
 				print("❌ ZRA Response Code NOT '000'. Skipping stock master update.")
 				print("🧾 Full response:", response)
