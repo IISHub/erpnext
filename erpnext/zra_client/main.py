@@ -274,7 +274,10 @@ class ZRAClient:
             )
 
             response.raise_for_status()
+            print("Stock master response:", response.text)
             return response.json()
+        
+           
 
         except requests.RequestException as e:
             error_msg = f"Request failed for stock master: {str(e)}"

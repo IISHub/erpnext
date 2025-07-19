@@ -139,7 +139,9 @@ class zraPurchase(ZRAClient):
 
             ocrnDt = datetime.now().strftime("%Y%m%d")
 
+            update_stock_master_items  = []
             update_stock_items = []
+            
             itemsListInToUseData = toUseData.get("itemList", [])
             for item in itemsListInToUseData:
                 itemSeq = item.get("itemSeq")
@@ -172,6 +174,11 @@ class zraPurchase(ZRAClient):
                     "pkg": 1,
                     "totDcAmt": 0,
                 })
+                update_stock_master_items.append({
+                    "itemCd": itemCd,
+                    "rsdQty": 12
+                })
+               
 
 
 
@@ -197,7 +204,7 @@ class zraPurchase(ZRAClient):
             print("📦 Preparing stock update data:", create_update_stock_payload)
 
             call_update_stock_after_purchase = self.update_stock_after_purchase(create_update_stock_payload)
-
+            print("📦 Preparing stock master item data:", update_stock_items)
             create_update_stock_master_payload = {
                             "tpin": self.get_tpin_number(),
                             "bhfId": self.get_branch_code(),
@@ -205,21 +212,10 @@ class zraPurchase(ZRAClient):
                             "regrNm": purchase_data.get("owner"),
                             "modrNm": purchase_data.get("owner"),
                             "modrId": purchase_data.get("owner"),
-                            "stockItemList":[
-                                {
-                                    "itemCd":"P10007",
-                                    "rsdQty":34
-                                },
-                                {
-                                    "itemCd":"P10005",
-                                    "rsdQty":34
-                                },
-                                {
-                                    "itemCd":"P10006",
-                                    "rsdQty":34
-                                }
-                            ]
+                            "stockItemList":update_stock_master_items 
+
                             }
+            print("📦 Preparing stock master update data:", create_update_stock_master_payload)
             call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
      
 
