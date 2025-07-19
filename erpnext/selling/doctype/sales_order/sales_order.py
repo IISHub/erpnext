@@ -15,7 +15,6 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.model.utils import get_fetch_values
 from frappe.query_builder.functions import Sum
 from frappe.utils import add_days, cint, cstr, flt, get_link_to_form, getdate, nowdate, strip_html
-
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
 	unlink_inter_company_doc,
 	update_linked_doc,
@@ -237,12 +236,24 @@ class SalesOrder(SellingController):
 		for i, item in enumerate(sell_order.get("items", []), 1):
 			item_code = item.get("item_code")
 			item_doc = frappe.get_doc("Item", item_code)
+
 			
 			# Basic calculations
 			qty = flt(item.get("qty", 1))
 			price = flt(item_doc.get("custom_default_unit_price", 0))
 			gross = flt(qty * price, 4)
+
 			
+			bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
+			print(bins)
+			available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
+
+
+			if qty > available_qty:
+				frappe.throw(
+					f"Insufficient stock for item <b>{item_code}</b>: "
+					f"Ordered: {qty}, Available: {available_qty}"
+				)
 			# Discount handling
 			discount_pct = flt(item.get("discount_percentage", 0))
 			discount_amt = flt(gross * discount_pct / 100, 4)
@@ -295,7 +306,7 @@ class SalesOrder(SellingController):
 		payload = {
 			"tpin": tpin,
 			"bhfId": branch_code,
-			"orgInvcNo": 0,
+			"orgInvcNo": "CISSAL-ORD-2025-00001-0000000000000000000137", 
 			"cisInvcNo": cisInvcNo,
 			"custNm": customer_name,
 			"custTpin": "2000000000",
@@ -303,13 +314,13 @@ class SalesOrder(SellingController):
 			"rcptTyCd": "R",
 			"pmtTyCd": "01",
 			"salesSttsCd": "02",
+			"rfdRsnCd": "01",
 			"cfmDt": cfmDt,
 			"salesDt": salesDt,
 			"totItemCnt": len(item_list),
 			"taxblAmtA": flt(totals['taxable'], 4),
 			"taxAmtA": flt(totals['vat'], 4),
 			"taxRtA": 16,
-			# Zero out other tax categories
 			"taxblAmtB": 0.0,
 			"taxblAmtC1": 0.0,
 			"taxblAmtC2": 0.0,
@@ -341,7 +352,9 @@ class SalesOrder(SellingController):
 			"modrId": created_by,
 			"modrNm": created_by
 		}
-
+		print(payload)
+		
+		# frappe.throw("This validation will always fail.")
 		try:
 			response = ZRA_OBJ.normal_sale(payload)
 			if response.get('resultCd') != '000':
@@ -686,7 +699,7 @@ class SalesOrder(SellingController):
 		payload = {
 			"tpin": tpin,
 			"bhfId": branch_code,
-			"orgInvcNo": 0,
+			"orgInvcNo": "orgCI2000000000",
 			"cisInvcNo": cisInvcNo,
 			"custNm": customer_name,
 			"custTpin": "2000000000",

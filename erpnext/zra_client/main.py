@@ -325,6 +325,15 @@ class ZRAClient:
                     if data.get("resultCd") != "000":
                         raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
                     return data
+                except ValueError:
+                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+                
+
+            elif response.status_code == 400:
+                try:
+                    data = response.json()
+                    error_message = data.get("error", "Unknown error")
+                    raise Exception(f"Error saving normal sale")   
 
                 except ValueError:
                     raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
