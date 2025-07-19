@@ -44,7 +44,7 @@ from erpnext.stock.get_item_details import (
 from erpnext.stock.stock_balance import get_reserved_qty, update_bin_qty
 from erpnext.zra_client.main import ZRAClient
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
-
+from erpnext.zra_client.sales.main import zraSales
 
 class WarehouseRequired(frappe.ValidationError):
 	pass
@@ -206,164 +206,9 @@ class SalesOrder(SellingController):
 
 	def validate(self):
 		super().validate()
-
 		sell_order = self.as_dict()
-		ZRA_OBJ = ZRAClient()
-		
-		# Basic invoice setup
-		tpin = ZRA_OBJ.tpin
-		branch_code = ZRA_OBJ.branch_code
-		cisInvcNo = f'CIS{sell_order.get("name","001")}-{random.randint(1000,9999)}'
-		customer_name = sell_order.get("customer") or sell_order.get("customer_name") or ""
-		created_by = sell_order.get("owner") or "system"
-		currency = sell_order.get("currency") or "ZMW"
-
-		# Date/time formatting
-		cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
-		salesDt = datetime.now().strftime('%Y%m%d')
-
-		# Initialize all totals
-		totals = {
-			'taxable': 0.0,
-			'vat': 0.0,
-			'discount': 0.0,
-			'gross': 0.0,
-			'net': 0.0
-		}
-
-		# Process items
-		item_list = []
-		for i, item in enumerate(sell_order.get("items", []), 1):
-			item_code = item.get("item_code")
-			item_doc = frappe.get_doc("Item", item_code)
-
-			
-			# Basic calculations
-			qty = flt(item.get("qty", 1))
-			price = flt(item_doc.get("custom_default_unit_price", 0))
-			gross = flt(qty * price, 4)
-
-			
-			bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
-			print(bins)
-			available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
-
-
-			if qty > available_qty:
-				frappe.throw(
-					f"Insufficient stock for item <b>{item_code}</b>: "
-					f"Ordered: {qty}, Available: {available_qty}"
-				)
-			# Discount handling
-			discount_pct = flt(item.get("discount_percentage", 0))
-			discount_amt = flt(gross * discount_pct / 100, 4)
-			net = flt(gross - discount_amt, 4)
-			
-			# VAT calculations (using standard VAT category A)
-			taxable = flt(net / 1.16, 4) 
-			vat = flt(taxable * 0.16, 4)
-			
-			# Update totals
-			totals['gross'] = flt(totals['gross'] + gross, 4)
-			totals['discount'] = flt(totals['discount'] + discount_amt, 4)
-			totals['net'] = flt(totals['net'] + net, 4)
-			totals['taxable'] = flt(totals['taxable'] + taxable, 4)
-			totals['vat'] = flt(totals['vat'] + vat, 4)
-
-			item_list.append({
-				"itemSeq": i,
-				"itemCd": item_code,
-				"itemClsCd": "50102518",
-				"itemNm": item.get("item_name"),
-				"bcd": item_doc.get("custom_origin_place_code", ""),
-				"pkgUnitCd": "WRAP",
-				"pkg": 1,
-				"qtyUnitCd": "EA",
-				"qty": qty,
-				"prc": flt(price, 4),
-				"splyAmt": flt(gross, 4),
-				"dcRt": flt(discount_pct, 4),
-				"dcAmt": flt(discount_amt, 4),
-				"vatCatCd": "A", 
-				"vatTaxblAmt": flt(taxable, 4),
-				"vatAmt": flt(vat, 4),
-				"totAmt": flt(taxable + vat, 4),
-				"exciseTxCatCd": "",
-				"tlCatCd": "",
-				"iplCatCd": "",
-				"exciseTaxblAmt": 0.0,
-				"tlTaxblAmt": 0.0,
-				"iplTaxblAmt": 0.0,
-				"iplAmt": 0.0,
-				"tlAmt": 0.0,
-				"exciseTxAmt": 0.0
-			})
-
-		cash_discount_rate = flt(25.0, 4)
-		cash_discount_amt = flt(totals['net'] * cash_discount_rate / 100, 4)
-		final_amount = flt(totals['net'] - cash_discount_amt, 4)
-
-		payload = {
-			"tpin": tpin,
-			"bhfId": branch_code, 
-			"cisInvcNo": cisInvcNo,
-			"custNm": customer_name,
-			"custTpin": "2000000000",
-			"salesTyCd": "N",
-			"rcptTyCd": "S",
-			"pmtTyCd": "01",
-			"salesSttsCd": "01",
-			# "rfdRsnCd": "01",
-			"cfmDt": cfmDt,
-			"salesDt": salesDt,
-			"totItemCnt": len(item_list),
-			"taxblAmtA": flt(totals['taxable'], 4),
-			"taxAmtA": flt(totals['vat'], 4),
-			"taxRtA": 16,
-			"taxblAmtB": 0.0,
-			"taxblAmtC1": 0.0,
-			"taxblAmtC2": 0.0,
-			"taxblAmtC3": 0.0,
-			"taxblAmtD": 0.0,
-			"taxblAmtE": 0.0,
-			"taxblAmtF": 0.0,
-			"taxblAmtIpl1": 0.0,
-			"taxblAmtIpl2": 0.0,
-			"taxblAmtTl": 0.0,
-			"taxblAmtEcm": 0.0,
-			"taxblAmtExeeg": 0.0,
-			"taxblAmtRvat": 0.0,
-			"taxblAmtTot": 0.0,  
-			# Totals
-			"totTaxblAmt": flt(totals['taxable'], 4),
-			"totTaxAmt": flt(totals['vat'], 4),
-			"totAmt": flt(final_amount, 4),
-			# Cash discount
-			"cashDcRt": flt(cash_discount_rate, 4),
-			"cashDcAmt": flt(cash_discount_amt, 4),
-			# Other required fields
-			"itemList": item_list,
-			"currencyTyCd": currency,
-			"exchangeRt": "1",
-			"prchrAcptcYn": "N",
-			"regrId": created_by,
-			"regrNm": created_by,
-			"modrId": created_by,
-			"modrNm": created_by
-		}
-		print(payload)
-		try:
-			response = ZRA_OBJ.normal_sale(payload)
-			if response.get('resultCd') != '000':
-				frappe.throw(f"ZRA Error: {response.get('resultMsg')}")
-			return response
-		except Exception as e:
-			frappe.log_error(
-				title="ZRA Submission Failed",
-				message=f"Error: {str(e)}\nPayload: {json.dumps(payload, indent=2)}"
-			)
-			frappe.throw(f"Failed to submit to ZRA: {str(e)}")
-
+		obj = zraSales()
+		obj.create_sale_normal(sell_order)
 		self.validate_delivery_date()
 		self.validate_proj_cust()
 		self.validate_po()
