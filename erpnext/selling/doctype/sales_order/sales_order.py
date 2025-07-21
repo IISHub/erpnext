@@ -457,8 +457,8 @@ class SalesOrder(SellingController):
 		cancel_data = self.as_dict()
 		sale_obj = zraSales()
 		sale_obj.create_credit_note_sale(cancel_data)
-		# if cancel_data.get("force_fail", True):  
-		# 	raise Exception("Cancellation failed due to forced failure condition.")
+		if cancel_data.get("force_fail", True):  
+			raise Exception("Cancellation failed due to forced failure condition.")
 
 		self.ignore_linked_doctypes = (
 			"GL Entry",
