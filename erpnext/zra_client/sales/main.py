@@ -19,6 +19,16 @@ class zraSales(ZRAClient):
 
     def call_create_normal_sale_client(self, payload):
         return self.normal_sale(payload)
+    
+
+    def update_stock_after_purchase(self, payload):
+        self.update_stock_after_purchase_view(payload)
+
+    def update_stock_master_after_purchase(self, payload):
+        self.save_stock_master(payload)
+
+    def cancel_sale(self, payload):
+        self.sale_credit_note(payload)
 
     def create_sale_normal(self, sell_order):
         cisInvcNo = f'CIS{sell_order.get("name", "001")}-{random.randint(1000, 9999)}'
@@ -164,10 +174,204 @@ class zraSales(ZRAClient):
             "invcAdjustReason": "",
             "itemList": item_list
         }
-
+        toUseData = payload
         response = self.call_create_normal_sale_client(payload)
+
         if response.get("resultCd") == "000":
-            
-            frappe.msgprint(f"✅ Purchase saved successfully: {response.get('resultMsg')}")
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            itemsListInToUseData = toUseData.get("itemList", [])
+
+            update_stock_items = []
+            update_stock_master_items = []
+
+            for item in itemsListInToUseData:
+                update_stock_items.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"),
+                    "taxblAmt": item.get("vatTaxblAmt"),  
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": item.get("vatAmt"),         
+                    "totAmt": item.get("totAmt"),
+                    "pkg": 1,
+                    "totDcAmt": 0,
+                })
+                update_stock_master_items.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": 12 
+                })
+
+            update_stock_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": "M",
+                "sarTyCd": "02",
+                "ocrnDt": ocrnDt,
+                "totItemCnt": toUseData['totItemCnt'],
+                "totTaxblAmt": toUseData['totTaxblAmt'],
+                "totTaxAmt": toUseData['totTaxAmt'],
+                "totAmt": toUseData['totAmt'],
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_items
+            }
+
+            print("📦 Preparing stock update data:", update_stock_payload)
+
+            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+
+            create_update_stock_master_payload = {
+                            "tpin": self.tpin,
+                            "bhfId": self.branch_code,
+                            "regrId": created_by,
+                            "regrNm": created_by,
+                            "modrNm": created_by,
+                            "modrId": created_by,
+                            "stockItemList":update_stock_master_items 
+
+                            }
+
+            print("📦 Preparing stock master update data:", create_update_stock_master_payload)
+            call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
+
+            frappe.msgprint(f"✅ Sale made successfully: {response.get('resultMsg')}")
         else:
             frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
+
+
+    def create_credit_note_sale(self, cancel_data):
+        print("sale cancelled", cancel_data)
+
+        branch_code = self.branch_code
+        tpin = self.tpin
+        cisInvcNo = f'CIS{cancel_data.get("name", "001")}-{random.randint(1000, 9999)}'
+        customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
+        created_by = cancel_data.get("owner") or "system"
+        currency = cancel_data.get("currency") or "ZMW"
+
+        cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
+        salesDt = datetime.now().strftime('%Y%m%d')
+
+        # Initialize all totals
+        totals = {
+            'taxable': 0.0,
+            'vat': 0.0,
+            'discount': 0.0,
+            'gross': 0.0,
+            'net': 0.0
+        }
+
+        item_list = []
+        for i, item in enumerate(cancel_data.get("items", []), 1):
+            item_code = item.get("item_code")
+            item_doc = frappe.get_doc("Item", item_code)
+
+            qty = flt(item.get("qty", 1))
+            price = flt(item_doc.get("custom_default_unit_price", 0))
+            gross = flt(qty * price, 4)
+
+            discount_pct = flt(item.get("discount_percentage", 0))
+            discount_amt = flt(gross * discount_pct / 100, 4)
+            net = flt(gross - discount_amt, 4)
+
+            taxable = flt(net / 1.16, 4)
+            vat = flt(taxable * 0.16, 4)
+
+            totals['gross'] += gross
+            totals['discount'] += discount_amt
+            totals['net'] += net
+            totals['taxable'] += taxable
+            totals['vat'] += vat
+
+            item_list.append({
+                "itemSeq": i,
+                "itemCd": item_code,
+                "itemClsCd": "50102518",
+                "itemNm": item.get("item_name"),
+                "bcd": item_doc.get("custom_origin_place_code", ""),
+                "pkgUnitCd": "WRAP",
+                "pkg": 1,
+                "qtyUnitCd": "EA",
+                "qty": qty,
+                "prc": price,
+                "splyAmt": gross,
+                "dcRt": discount_pct,
+                "dcAmt": discount_amt,
+                "vatCatCd": "A",
+                "vatTaxblAmt": taxable,
+                "vatAmt": vat,
+                "totAmt": flt(taxable + vat, 4),
+                "exciseTxCatCd": "",
+                "tlCatCd": "",
+                "iplCatCd": "",
+                "exciseTaxblAmt": 0.0,
+                "tlTaxblAmt": 0.0,
+                "iplTaxblAmt": 0.0,
+                "iplAmt": 0.0,
+                "tlAmt": 0.0,
+                "exciseTxAmt": 0.0
+            })
+
+        cash_discount_rate = 25.0
+        cash_discount_amt = flt(totals['net'] * cash_discount_rate / 100, 4)
+        final_amount = flt(totals['net'] - cash_discount_amt, 4)
+
+        payload = {
+            "tpin": tpin,
+            "bhfId": branch_code,
+            "orgInvcNo": "orgCI2000000000",
+            "cisInvcNo": cisInvcNo,
+            "custNm": customer_name,
+            "custTpin": "2000000000",
+            "salesTyCd": "N",
+            "rcptTyCd": "S",
+            "pmtTyCd": "01",
+            "salesSttsCd": "02",
+            "cfmDt": cfmDt,
+            "salesDt": salesDt,
+            "totItemCnt": len(item_list),
+            "taxblAmtA": totals['taxable'],
+            "taxAmtA": totals['vat'],
+            "taxRtA": 16,
+            "taxblAmtB": 0.0,
+            "taxblAmtC1": 0.0,
+            "taxblAmtC2": 0.0,
+            "taxblAmtC3": 0.0,
+            "taxblAmtD": 0.0,
+            "taxblAmtE": 0.0,
+            "taxblAmtF": 0.0,
+            "taxblAmtIpl1": 0.0,
+            "taxblAmtIpl2": 0.0,
+            "taxblAmtTl": 0.0,
+            "taxblAmtEcm": 0.0,
+            "taxblAmtExeeg": 0.0,
+            "taxblAmtRvat": 0.0,
+            "taxblAmtTot": 0.0,
+            "totTaxblAmt": totals['taxable'],
+            "totTaxAmt": totals['vat'],
+            "totAmt": final_amount,
+            "cashDcRt": cash_discount_rate,
+            "cashDcAmt": cash_discount_amt,
+            "itemList": item_list,
+            "currencyTyCd": currency,
+            "exchangeRt": "1",
+            "prchrAcptcYn": "N",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by
+        }
+        self.cancel_sale(payload)
+
+
+		

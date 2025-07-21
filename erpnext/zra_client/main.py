@@ -249,7 +249,7 @@ class ZRAClient:
 
         try:
             print("Updating stock after purchase payload: ", payload)
-            response = requests.post(self.save_stock_url, json=payload, timeout=10)
+            response = requests.post(self.save_stock_url, json=payload, timeout=60)
             response.raise_for_status()
             print("Stock update response:", response.text)
             return response.json()
@@ -264,7 +264,7 @@ class ZRAClient:
             response = requests.post(
                 self.save_stock_master_url,
                 json=payload,
-                timeout=30
+                timeout=50
             )
 
 
@@ -345,15 +345,20 @@ class ZRAClient:
             raise Exception(f"❌ Network or connection error: {e}")
 
     def sale_credit_note(self, payload):
+        print(payload)
         try:
             response = requests.post(self.sale_url, json=payload)
+            print("✅ Credit note response status:", response.status_code)
+            print("📦 Response content:", response.json() if response.headers.get('Content-Type') == 'application/json' else response.text)
             return response
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to sale credit note"
-            , message=str(e))
-            raise Exception(f"❌ Failed to normal sale: {e}")
-        
+            frappe.log_error(
+                title="❌ Failed to sale credit note",
+                message=str(e)
+            )
+            raise Exception(f"❌ Failed to post credit note sale: {e}")
+
     def sale_debit_note(self):
         try:
             response = requests.post(self.sale_url)
