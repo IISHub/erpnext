@@ -182,7 +182,8 @@ class SalesOrder(SellingController):
 		total_net_weight: DF.Float
 		total_qty: DF.Float
 		total_taxes_and_charges: DF.Currency
-		transaction_date: DF.Date
+		transaction_date: DF.Dateself.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
+
 		utm_campaign: DF.Link | None
 		utm_content: DF.Data | None
 		utm_medium: DF.Link | None
@@ -195,9 +196,12 @@ class SalesOrder(SellingController):
 
 	def bofore_insert(self):
 		sell_order = self.as_dict()
+		print("**** sales****:",sell_order)
 		sale_obj = zraSales()
-		sale_obj.create_sale_normal(sell_order)
 
+		sale_obj.create_sale_normal(sell_order)
+	
+	
 	def onload(self) -> None:
 		super().onload()
 

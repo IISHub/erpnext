@@ -1,6 +1,10 @@
+import time
 import json
 import random
+import asyncio
 import frappe
+import requests
+import threading
 from frappe.utils import flt
 from datetime import datetime
 from erpnext.zra_client.main import ZRAClient
@@ -24,17 +28,42 @@ class zraSales(ZRAClient):
     def call_create_normal_sale_client(self, payload):
         return self.normal_sale(payload)
     
+    def call_create_credit_note_sale_client(self, payload):
+        return self.sale_credit_note(payload)
 
     def update_stock_after_purchase(self, payload):
-        self.update_stock_after_purchase_view(payload)
+        return self.update_stock_after_purchase_view(payload)
 
     def update_stock_master_after_purchase(self, payload):
-        self.save_stock_master(payload)
+        return self.save_stock_master(payload)
+    
 
-    def cancel_sale(self, payload):
-        self.sale_credit_note(payload)
+    def update_rcptNo_delayed(self, docname, rcpt_no, delay=10):
+        def worker():
+            try:
+                print(f"⏳ Received rcptNo: {rcpt_no}. Waiting {delay} seconds before updating...")
+                time.sleep(delay)
+
+                url = "http://0.0.0.0:7000/api/update_rcpt/" 
+                payload = {
+                    "docname": docname,
+                    "rcpt_no": rcpt_no
+                }
+                headers = {'Content-Type': 'application/json'}
+                response = requests.post(url, json=payload, headers=headers)
+
+                if response.status_code == 200:
+                    print(f"✅ rcptNo '{rcpt_no}' updated for {docname} via API")
+                else:
+                    print(f"❌ Failed to update rcptNo via API: {response.text}")
+
+            except Exception as e:
+                print(f"❌ Error calling API to update rcptNo: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def create_sale_normal(self, sell_order):
+        print("Creating sale for order:", sell_order)
         cisInvcNo = f'CIS{sell_order.get("name", "001")}-{random.randint(1000, 9999)}'
         created_by = sell_order.get("owner") or "system"
         currency = sell_order.get("currency") or "ZMW"
@@ -184,10 +213,12 @@ class zraSales(ZRAClient):
         response = self.call_create_normal_sale_client(payload)
 
         if response.get("resultCd") == "000":
-            get_rcpt_no = response.get("rcptNo")
-            sales_invoice_doc = frappe.get_doc("Sales Invoice", sell_order.get("name"))
-            sales_invoice_doc.update({"rcptNo": get_rcpt_no})
-            sales_invoice_doc.save(ignore_permissions=True)
+            get_rcpt_no = response.get("data", {}).get("rcptNo")
+            print("✅ Stock master updated successfully after sale.")
+            doc_name = sell_order.get("name")
+            self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
+
+            print("This prints immediately, before delayed print")
             ocrnDt = datetime.now().strftime("%Y%m%d")
             itemsListInToUseData = toUseData.get("itemList", [])
 
@@ -238,30 +269,51 @@ class zraSales(ZRAClient):
 
             print("📦 Preparing stock update data:", update_stock_payload)
 
-            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            response = call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            if response.get("resultCd") == "000":
+                print("✅ Stock updated successfully after sale.")
 
-            create_update_stock_master_payload = {
-                            "tpin": self.tpin,
-                            "bhfId": self.branch_code,
-                            "regrId": created_by,
-                            "regrNm": created_by,
-                            "modrNm": created_by,
-                            "modrId": created_by,
-                            "stockItemList":update_stock_master_items 
+                create_update_stock_master_payload = {
+                                "tpin": self.tpin,
+                                "bhfId": self.branch_code,
+                                "regrId": created_by,
+                                "regrNm": created_by,
+                                "modrNm": created_by,
+                                "modrId": created_by,
+                                "stockItemList":update_stock_master_items 
 
-                            }
+                                }
 
-            print("📦 Preparing stock master update data:", create_update_stock_master_payload)
-            call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
-
+                print("📦 Preparing stock master update data:", create_update_stock_master_payload)
+                response = call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
+         
             frappe.msgprint(f"✅ Sale made successfully: {response.get('resultMsg')}")
         else:
             frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
 
 
-
+    
     def create_credit_note_sale(self, cancel_data):
+        name = cancel_data.get("name")
         print("sale cancelled", cancel_data)
+        try:
+            resp = requests.get(
+                "http://0.0.0.0:7000/api/get-rcpt-no/",
+                params={"docname": name},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                rcpt_no = resp.json().get("rcpNo")
+                print("✅ Retrieved rcptNo:", rcpt_no)
+            else:
+                print("⚠️ Could not retrieve rcptNo: ", resp.text)
+        except Exception as e:
+            print("⚠️ Error during rcptNo request:", str(e))
+
+
+        if not rcpt_no:
+            raise Exception(f"rcptNo not found for Sales Order: {name}")
+        
         cisInvcNo = f'CIS{cancel_data.get("name", "001")}-{random.randint(1000, 9999)}'
         customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
         created_by = cancel_data.get("owner") or "system"
@@ -337,8 +389,8 @@ class zraSales(ZRAClient):
                 "tpin": self.get_tpin(),
                 "bhfId": self.get_branch(),
                 "orgSdcId": self.get_org_sdc_id(),
-                "orgInvcNo": "86",
-                "cisInvcNo":"CIS001-138060",
+                "orgInvcNo": rcpt_no,
+                "cisInvcNo":"CIS001-138061",
                 "Customer": "Smart Customer",
                 "custTpin": "1000000000",
                 "salesTyCd": "N",
@@ -474,7 +526,7 @@ class zraSales(ZRAClient):
                 ]
             }
         
-        self.cancel_sale(payload)
+        self.call_create_credit_note_sale_client(payload)
 
 
 		
