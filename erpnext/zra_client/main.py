@@ -7,6 +7,7 @@ import json
 
 
 ZRA_LOCAL_BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0"
+ZRA_CREATE_ITEM = "/items/saveItem"
 ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
 ZRA_UPDATE_ITEM = "/items/updateItem"
 ZRA_SAVE_STOCK_MASTER = "/stockMaster/saveStockMaster"
@@ -22,6 +23,7 @@ class ZRAClient:
     def __init__(self):
         self.base_url = ZRA_LOCAL_BASE_URL
         self.internal_base_url = INTERNAL_URL 
+        self.create_item_url  = f"{self.base_url}{ZRA_CREATE_ITEM}" 
         self.update_url = f"{self.base_url}{ZRA_UPDATE_ITEM}"
         self.save_stock_url = f"{self.base_url}{ZRA_SAVE_STOCK_URL}"
         self.save_stock_master_url = f"{self.base_url}{ZRA_SAVE_STOCK_MASTER}"
@@ -30,6 +32,20 @@ class ZRAClient:
         self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
+
+    
+
+    def create_item_zra(self, payload):
+        try:       
+            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
+            response.raise_for_status() 
+            print(response)
+            return response.json()
+        
+        except requests.exceptions.RequestException as e:
+            frappe.throw(f"Failed to add item in ZRA due to network or API error: {e}")
+        except ValueError:
+            frappe.throw(f"Invalid JSON response from ZRA API during adding item.")
 
     
     def create_customer(self, tpin, customer_name, email_id, mobile_no, created_by):

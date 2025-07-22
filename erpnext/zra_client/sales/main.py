@@ -46,10 +46,10 @@ class zraSales(ZRAClient):
             bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
             available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
 
-            if qty > available_qty:
-                frappe.throw(
-                    f"Insufficient stock for item <b>{item_code}</b>: Ordered: {qty}, Available: {available_qty}"
-                )
+            # if qty > available_qty:
+            #     frappe.throw(
+            #         f"Insufficient stock for item <b>{item_code}</b>: Ordered: {qty}, Available: {available_qty}"
+            #     )
 
             discount_pct = flt(item.get("discount_percentage", 0))
             discount_amt = flt(gross * discount_pct / 100, 4)
@@ -176,6 +176,7 @@ class zraSales(ZRAClient):
             "itemList": item_list
         }
         toUseData = payload
+        print("📦 Preparing sale data:", payload)
         response = self.call_create_normal_sale_client(payload)
 
         if response.get("resultCd") == "000":
@@ -250,6 +251,7 @@ class zraSales(ZRAClient):
             frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
 
 
+
     def create_credit_note_sale(self, cancel_data):
         print("sale cancelled", cancel_data)
 
@@ -263,7 +265,6 @@ class zraSales(ZRAClient):
         cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
         salesDt = datetime.now().strftime('%Y%m%d')
 
-        # Initialize all totals
         totals = {
             'taxable': 0.0,
             'vat': 0.0,
@@ -331,19 +332,26 @@ class zraSales(ZRAClient):
             "tpin": tpin,
             "bhfId": branch_code,
             "orgSdcId": "SDC0010002709",
-            "orgInvcNo": 7,
+            "orgInvcNo": cancel_data.get("name"),
             "cisInvcNo": cisInvcNo,
             "custNm": customer_name,
-            "custTpin": "2000000000",
+            "custTpin": cancel_data.get("customer_tpin", "2000000000"),
             "salesTyCd": "N",
             "rcptTyCd": "R",
             "pmtTyCd": "01",
             "salesSttsCd": "02",
             "cfmDt": cfmDt,
             "salesDt": salesDt,
+            "stockRlsDt": " ",
+            "cnclReqDt": " ",
+            "cnclDt": " ",
+            "rfdDt": " ",
+            "rfdRsnCd": "01",
+            "dbtRsnCd": "03",
+            "invcAdjustReason": "Omitted Item",
             "totItemCnt": len(item_list),
-            "taxblAmtA": totals['taxable'],
-            "taxAmtA": totals['vat'],
+            "taxblAmtA": flt(totals['taxable'], 3),
+            "taxAmtA": flt(totals['vat'], 3),
             "taxRtA": 16,
             "taxblAmtB": 0.0,
             "taxblAmtC1": 0.0,
@@ -359,20 +367,21 @@ class zraSales(ZRAClient):
             "taxblAmtExeeg": 0.0,
             "taxblAmtRvat": 0.0,
             "taxblAmtTot": 0.0,
-            "totTaxblAmt": totals['taxable'],
-            "totTaxAmt": totals['vat'],
-            "totAmt": final_amount,
+            "totTaxblAmt": flt(totals['taxable'], 3),
+            "totTaxAmt": flt(totals['vat'], 3),
+            "totAmt": flt(totals['gross'], 3),
             "cashDcRt": cash_discount_rate,
             "cashDcAmt": cash_discount_amt,
             "itemList": item_list,
             "currencyTyCd": currency,
-            "exchangeRt": "1",
+            "exchangeRt": 1.0,
             "prchrAcptcYn": "N",
-            "rfdRsnCd": "01",
+            "remark": "",
             "regrId": created_by,
             "regrNm": created_by,
             "modrId": created_by,
-            "modrNm": created_by
+            "modrNm": created_by,
+            "saleCtyCd": "1"
         }
         self.cancel_sale(payload)
 
