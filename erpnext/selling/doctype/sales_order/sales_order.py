@@ -193,6 +193,10 @@ class SalesOrder(SellingController):
 		super().__init__(*args, **kwargs)
 	
 
+	def bofore_insert(self):
+		sell_order = self.as_dict()
+		sale_obj = zraSales()
+		sale_obj.create_sale_normal(sell_order)
 
 	def onload(self) -> None:
 		super().onload()

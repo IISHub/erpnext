@@ -67,10 +67,10 @@ class zraPurchase(ZRAClient):
             bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty", "projected_qty", "name"])
             available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
 
-            if requested_qty > available_qty:
-                frappe.throw(f"❌ Insufficient stock for item <b>{item_code}</b>:<br>"
-                             f"🧾 Requested: {requested_qty}<br>"
-                             f"📦 Available: {available_qty}")
+            # if requested_qty > available_qty:
+            #     frappe.throw(f"❌ Insufficient stock for item <b>{item_code}</b>:<br>"
+            #                  f"🧾 Requested: {requested_qty}<br>"
+            #                  f"📦 Available: {available_qty}")
 
             remaining_qty = requested_qty
             for b in bins:

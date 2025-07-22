@@ -17,6 +17,10 @@ class zraSales(ZRAClient):
     def get_branch(self):
         return self.branch_code
 
+
+    def get_org_sdc_id(self):
+        return self.org_sdc_id
+    
     def call_create_normal_sale_client(self, payload):
         return self.normal_sale(payload)
     
@@ -180,6 +184,10 @@ class zraSales(ZRAClient):
         response = self.call_create_normal_sale_client(payload)
 
         if response.get("resultCd") == "000":
+            get_rcpt_no = response.get("rcptNo")
+            sales_invoice_doc = frappe.get_doc("Sales Invoice", sell_order.get("name"))
+            sales_invoice_doc.update({"rcptNo": get_rcpt_no})
+            sales_invoice_doc.save(ignore_permissions=True)
             ocrnDt = datetime.now().strftime("%Y%m%d")
             itemsListInToUseData = toUseData.get("itemList", [])
 
@@ -254,9 +262,6 @@ class zraSales(ZRAClient):
 
     def create_credit_note_sale(self, cancel_data):
         print("sale cancelled", cancel_data)
-
-        branch_code = self.branch_code
-        tpin = self.tpin
         cisInvcNo = f'CIS{cancel_data.get("name", "001")}-{random.randint(1000, 9999)}'
         customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
         created_by = cancel_data.get("owner") or "system"
@@ -329,9 +334,9 @@ class zraSales(ZRAClient):
         final_amount = flt(totals['net'] - cash_discount_amt, 4)
 
         payload = {
-                "tpin": "2484778002",
-                "bhfId": "000",
-                "orgSdcId": "SDC0010002709",
+                "tpin": self.get_tpin(),
+                "bhfId": self.get_branch(),
+                "orgSdcId": self.get_org_sdc_id(),
                 "orgInvcNo": "86",
                 "cisInvcNo":"CIS001-138060",
                 "Customer": "Smart Customer",

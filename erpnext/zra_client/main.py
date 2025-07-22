@@ -18,6 +18,7 @@ INTERNAL_URL = "http://0.0.0.0:7000/"
 
 BRANCH_CODE = "000"
 TPIN = "2484778002"
+ORIGIN_SCD_ID = "SDC0010002709"
 
 class ZRAClient:
     def __init__(self):
@@ -32,6 +33,7 @@ class ZRAClient:
         self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
+        self.org_sdc_id = ORIGIN_SCD_ID
 
     
 
@@ -359,13 +361,17 @@ class ZRAClient:
         except requests.RequestException as e:
             frappe.log_error(title="❌ Failed to send normal sale", message=str(e))
             raise Exception(f"❌ Network or connection error: {e}")
+        
 
     def sale_credit_note(self, payload):
         print(payload)
         try:
             response = requests.post(self.sale_url, json=payload)
             print("✅ Credit note response status:", response.status_code)
-            print("📦 Response content:", response.json() if response.headers.get('Content-Type') == 'application/json' else response.text)
+            if response.headers.get('Content-Type') == 'application/json':
+                print("📦 Response content:", response.json())
+            else:
+                print("📦 Response content:", response.text)
             return response
 
         except requests.RequestException as e:
