@@ -200,13 +200,6 @@ class PurchaseOrder(BuyingController):
 
 	def validate(self):
 		super().validate()
-		purchase_obj = zraPurchase()
-
-		purchase_data = self.as_dict()
-		purchase_obj.create_purchase(purchase_data)
-
-
-
 		self.set_status()
 
 		self.set_tax_withholding()
@@ -490,6 +483,10 @@ class PurchaseOrder(BuyingController):
 
 	def on_submit(self):
 		super().on_submit()
+		purchase_obj = zraPurchase()
+
+		purchase_data = self.as_dict()
+		purchase_obj.create_purchase(purchase_data)
 
 		if self.is_against_so():
 			self.update_status_updater()
