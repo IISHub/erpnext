@@ -56,6 +56,7 @@ from erpnext.stock.serial_batch_bundle import (
 )
 from erpnext.stock.stock_ledger import NegativeStockError, get_previous_sle, get_valuation_rate
 from erpnext.stock.utils import get_bin, get_incoming_rate
+from erpnext.zra_client.stock.main import Stock
 
 
 class FinishedGoodError(frappe.ValidationError):
@@ -186,8 +187,10 @@ class StockEntry(StockController):
 
 	def before_insert(self):
 		stock_data = self.as_dict()
-		items = stock_data.get("items", [])
-		zra_client = ZRAClient()
+		stock_client = Stock()
+		stock_client.create_stock(stock_data)
+		
+	
 
 
 	def onload(self):

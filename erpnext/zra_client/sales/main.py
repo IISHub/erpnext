@@ -64,6 +64,9 @@ class zraSales(ZRAClient):
 
     def create_sale_normal(self, sell_order):
         print("Creating sale for order:", sell_order)
+        customer_name = sell_order.get("customer") or sell_order.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name)
+        customer_tpin = customer_doc.get("custom_customer_tpin")
         cisInvcNo = f'CIS{sell_order.get("name", "001")}-{random.randint(1000, 9999)}'
         created_by = sell_order.get("owner") or "system"
         currency = sell_order.get("currency") or "ZMW"
@@ -135,7 +138,8 @@ class zraSales(ZRAClient):
             "orgSdcId": "SDC0010002709",
             "cisInvcNo": cisInvcNo,
             "orgInvcNo": 0,
-            "Customer": "Smart Customer",
+            "Customer":  customer_name,
+            "custTpin":  customer_tpin ,
             "salesTyCd": "N",
             "rcptTyCd": "S",
             "pmtTyCd": "01",
@@ -295,6 +299,13 @@ class zraSales(ZRAClient):
     
     def create_credit_note_sale(self, cancel_data):
         name = cancel_data.get("name")
+        customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name)
+        customer_tpin = customer_doc.get("custom_customer_tpin")
+        
+
+        print("Customer Data:", customer_doc.as_dict())
+        print("Customer TPIN:", customer_tpin)
         print("sale cancelled", cancel_data)
         try:
             resp = requests.get(
@@ -391,8 +402,8 @@ class zraSales(ZRAClient):
                 "orgSdcId": self.get_org_sdc_id(),
                 "orgInvcNo": rcpt_no,
                 "cisInvcNo":"CIS001-138061",
-                "Customer": "Smart Customer",
-                "custTpin": "1000000000",
+                "Customer": customer_name ,
+                "custTpin": customer_tpin,
                 "salesTyCd": "N",
                 "rcptTyCd": "R",
                 "pmtTyCd": "01",

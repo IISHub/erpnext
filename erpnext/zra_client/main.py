@@ -275,7 +275,7 @@ class ZRAClient:
             raise Exception(f"Failed to update stock after purchase in ZRA: {e}")
         
 
-    def save_stock_master(self, payload = None):
+    def save_stock_master(self, payload):
         try:
         
 
