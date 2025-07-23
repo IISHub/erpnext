@@ -484,7 +484,6 @@ class PurchaseOrder(BuyingController):
 	def on_submit(self):
 		super().on_submit()
 		purchase_obj = zraPurchase()
-
 		purchase_data = self.as_dict()
 		purchase_obj.create_purchase(purchase_data)
 

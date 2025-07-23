@@ -214,9 +214,6 @@ class SalesOrder(SellingController):
 
 	def validate(self):
 		super().validate()
-		sell_order = self.as_dict()
-		sale_obj = zraSales()
-		sale_obj.create_sale_normal(sell_order)
 		self.validate_delivery_date()
 		self.validate_proj_cust()
 		self.validate_po()
@@ -443,6 +440,9 @@ class SalesOrder(SellingController):
 	def on_submit(self):
 		self.check_credit_limit()
 		self.update_reserved_qty()
+		sell_order = self.as_dict()
+		sale_obj = zraSales()
+		sale_obj.create_sale_normal(sell_order)
 
 		frappe.get_cached_doc("Authorization Control").validate_approving_authority(
 			self.doctype, self.company, self.base_grand_total, self
@@ -465,8 +465,6 @@ class SalesOrder(SellingController):
 		cancel_data = self.as_dict()
 		sale_obj = zraSales()
 		sale_obj.create_credit_note_sale(cancel_data)
-		if cancel_data.get("force_fail", True):  
-			raise Exception("Cancellation failed due to forced failure condition.")
 
 		self.ignore_linked_doctypes = (
 			"GL Entry",

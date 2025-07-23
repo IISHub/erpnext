@@ -296,248 +296,135 @@ class zraSales(ZRAClient):
             frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
 
 
-    
+
     def create_credit_note_sale(self, cancel_data):
-        name = cancel_data.get("name")
+        print("Sale cancelled", cancel_data)
+
+        # Receipt number and new CIS Invoice No
+        rcpt_no = cancel_data.get("name")
+        cisInvcNo = f'CIS{rcpt_no}-{random.randint(1000, 9999)}'
+
+        # Get customer info
         customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
         customer_doc = frappe.get_doc("Customer", customer_name)
-        customer_tpin = customer_doc.get("custom_customer_tpin")
-        
+        customer_tpin = customer_doc.get("custom_customer_tpin") or ""
 
-        print("Customer Data:", customer_doc.as_dict())
-        print("Customer TPIN:", customer_tpin)
-        print("sale cancelled", cancel_data)
-        try:
-            resp = requests.get(
-                "http://0.0.0.0:7000/api/get-rcpt-no/",
-                params={"docname": name},
-                timeout=5
-            )
-            if resp.status_code == 200:
-                rcpt_no = resp.json().get("rcpNo")
-                print("✅ Retrieved rcptNo:", rcpt_no)
-            else:
-                print("⚠️ Could not retrieve rcptNo: ", resp.text)
-        except Exception as e:
-            print("⚠️ Error during rcptNo request:", str(e))
-
-
-        if not rcpt_no:
-            raise Exception(f"rcptNo not found for Sales Order: {name}")
-        
-        cisInvcNo = f'CIS{cancel_data.get("name", "001")}-{random.randint(1000, 9999)}'
-        customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
         created_by = cancel_data.get("owner") or "system"
         currency = cancel_data.get("currency") or "ZMW"
-
         cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
         salesDt = datetime.now().strftime('%Y%m%d')
 
-        totals = {
-            'taxable': 0.0,
-            'vat': 0.0,
-            'discount': 0.0,
-            'gross': 0.0,
-            'net': 0.0
-        }
+        get_name = cancel_data.get("name")
 
+        if not get_name:
+            frappe.throw("Sale cancellation failed: 'name' field is required in cancel_data.")
+
+        try:
+
+            response = requests.get("http://0.0.0.0:7000/api/get-rcpt-no/", params={"docname": get_name})
+
+            response.raise_for_status() 
+
+            data = response.json()
+            orgInvcNo = data.get("rcpNo")
+
+            if not orgInvcNo:
+                frappe.throw("Sale cancellation failed: 'orgInvcNo' not found in response.")
+
+        except Exception as e: 
+            frappe.throw(f"Sale cancellation failed: {str(e)}")
         item_list = []
-        for i, item in enumerate(cancel_data.get("items", []), 1):
-            item_code = item.get("item_code")
-            item_doc = frappe.get_doc("Item", item_code)
+        totals = {"net": 0.0, "vat": 0.0, "taxable": 0.0}
 
-            qty = flt(item.get("qty", 1))
-            price = flt(item_doc.get("custom_default_unit_price", 0))
-            gross = flt(qty * price, 4)
+        # Process each item in cancel_data items
+        for idx, item in enumerate(cancel_data.get("items", []), start=1):
+            price = flt(item.get("rate") or 0)
+            quantity = flt(item.get("qty") or 1)
+            net_amount = flt(price * quantity, 4)
+            taxable_amount = net_amount
+            vat_amount = flt(taxable_amount * 0.16, 4)
 
-            discount_pct = flt(item.get("discount_percentage", 0))
-            discount_amt = flt(gross * discount_pct / 100, 4)
-            net = flt(gross - discount_amt, 4)
-
-            taxable = flt(net / 1.16, 4)
-            vat = flt(taxable * 0.16, 4)
-
-            totals['gross'] += gross
-            totals['discount'] += discount_amt
-            totals['net'] += net
-            totals['taxable'] += taxable
-            totals['vat'] += vat
+            totals["net"] += net_amount
+            totals["taxable"] += taxable_amount
+            totals["vat"] += vat_amount
 
             item_list.append({
-                "itemSeq": i,
-                "itemCd": item_code,
-                "itemClsCd": "50102518",
-                "itemNm": item.get("item_name"),
-                "bcd": item_doc.get("custom_origin_place_code", ""),
-                "pkgUnitCd": "WRAP",
+                "itemSeq": idx,
+                "itemCd": item.get("item_code") or "",
+                "itemClsCd": "A",
+                "itemNm": item.get("item_name") or "",
+                "bcd": "",
+                "pkgUnitCd": "EA",
                 "pkg": 1,
                 "qtyUnitCd": "EA",
-                "qty": qty,
+                "qty": quantity,
                 "prc": price,
-                "splyAmt": gross,
-                "dcRt": discount_pct,
-                "dcAmt": discount_amt,
-                "vatCatCd": "A",
-                "vatTaxblAmt": taxable,
-                "vatAmt": vat,
-                "totAmt": flt(taxable + vat, 4),
-                "exciseTxCatCd": "",
-                "tlCatCd": "",
-                "iplCatCd": "",
-                "exciseTaxblAmt": 0.0,
-                "tlTaxblAmt": 0.0,
-                "iplTaxblAmt": 0.0,
-                "iplAmt": 0.0,
-                "tlAmt": 0.0,
-                "exciseTxAmt": 0.0
+                "splyAmt": taxable_amount,
+                "dcRt": 0,
+                "dcAmt": 0,
+                "taxblAmt": taxable_amount,
+                "taxTyCd": "A",
+                "taxAmt": vat_amount,
+                "totAmt": flt(taxable_amount + vat_amount, 4),
+                "remark": ""
             })
 
-        cash_discount_rate = 25.0
-        cash_discount_amt = flt(totals['net'] * cash_discount_rate / 100, 4)
-        final_amount = flt(totals['net'] - cash_discount_amt, 4)
+        # Calculate cash discount only if applicable
+        raw_total = flt(totals["taxable"] + totals["vat"], 4)
+        if raw_total > 0:
+            cash_discount_rate = 25.0
+            cash_discount_amt = flt(raw_total * cash_discount_rate / 100, 4)
+        else:
+            cash_discount_rate = 0.0
+            cash_discount_amt = 0.0
+
+        final_amount = flt(raw_total - cash_discount_amt, 4)
 
         payload = {
-                "tpin": self.get_tpin(),
-                "bhfId": self.get_branch(),
-                "orgSdcId": self.get_org_sdc_id(),
-                "orgInvcNo": rcpt_no,
-                "cisInvcNo":"CIS001-138061",
-                "Customer": customer_name ,
-                "custTpin": customer_tpin,
-                "salesTyCd": "N",
-                "rcptTyCd": "R",
-                "pmtTyCd": "01",
-                "salesSttsCd": "02",
-                "cfmDt": "20240508102010",
-                "salesDt": "20250719",
-                "rfdRsnCd": "01",
-                "totItemCnt": 2,
-                "taxblAmtA": 86.2069,
-                "taxblAmtB": 0.0,
-                "taxblAmtC1": 0.0,
-                "taxblAmtC2": 0.0,
-                "taxblAmtC3": 0.0,
-                "taxblAmtD": 0.0,
-                "taxblAmtRvat": 0.0,
-                "taxblAmtE": 0.0,
-                "taxblAmtF": 0.0,
-                "taxblAmtIpl1": 0.0,
-                "taxblAmtIpl2": 100,
-                "taxblAmtTl": 0.0,
-                "taxblAmtEcm": 0,
-                "taxblAmtExeeg": 0.0,
-                "taxblAmtTot": 0.0,
-                "taxRtA": 16,
-                "taxRtB": 16,
-                "taxRtC1": 0,
-                "taxRtC2": 0,
-                "taxRtC3": 0,
-                "taxRtD": 0,
-                "tlAmt": 0.0,
-                "taxRtRvat": 16,
-                "taxRtE": 0,
-                "taxRtF": 10,
-                "taxRtIpl1": 5,
-                "taxRtIpl2": 0,
-                "taxRtTl": 1.5,
-                "taxRtEcm": 5,
-                "taxRtExeeg": 3,
-                "taxRtTot": 0,
-                "taxAmtA": 13.7931,
-                "taxAmtB": 0.0,
-                "taxAmtC1": 0.0,
-                "taxAmtC2": 0.0,
-                "taxAmtC3": 0.0,
-                "taxAmtD": 0.0,
-                "taxAmtRvat": 0.0,
-                "taxAmtE": 0.0,
-                "taxAmtF": 0.0,
-                "taxAmtIpl1": 0.0,
-                "taxAmtIpl2": 0.0,
-                "taxAmtTl": 0.0,
-                "taxAmtEcm": 0.0,
-                "taxAmtExeeg": 0.0,
-                "taxAmtTot": 0.0,
-                "totTaxblAmt": 186.2069,
-                "totTaxAmt": 13.7931,
-                "cashDcRt": 25,
-                "cashDcAmt": 50,
-                "totAmt": 150,
-                "prchrAcptcYn": "N",
-                "remark": "",
-                "regrId": "admin",
-                "regrNm": "admin",
-                "modrId": "admin",
-                "modrNm": "admin",
-                "saleCtyCd": "1",
-                "currencyTyCd": "ZMW",
-                "exchangeRt": "1",
-                "destnCountryCd": "",
-                "dbtRsnCd": "",
-                "invcAdjustReason": "",
-                "itemList": [
-                    {
-                        "itemSeq": 1,
-                        "itemCd": "20056",
-                        "itemClsCd": "50102518",
-                        "itemNm": "Bread",
-                        "bcd": "",
-                        "pkgUnitCd": "BA",
-                        "pkg": 0.0,
-                        "qtyUnitCd": "BE",
-                        "qty": 1.0,
-                        "prc": 125,
-                        "splyAmt": 125,
-                        "dcRt": 20,
-                        "dcAmt": 25,
-                        "isrccCd": "",
-                        "isrccNm": "",
-                        "isrcRt": 0.0,
-                        "isrcAmt": 0.0,
-                        "vatCatCd": "A",
-                        "vatTaxblAmt": 86.2069,
-                        "vatAmt": 13.7931,
-                        "exciseTaxblAmt": 0,
-                        "tlTaxblAmt": 0.0,
-                        "iplTaxblAmt": 0.0,
-                        "iplAmt": 0.0,
-                        "tlAmt": 0.0,
-                        "exciseTxAmt": 0,
-                        "totAmt": 100
-                    },
-                    {
-                        "itemSeq": 2,
-                        "itemCd": "20056",
-                        "itemClsCd": "50102518",
-                        "itemNm": "Reinsurance",
-                        "bcd": "",
-                        "pkgUnitCd": "BA",
-                        "pkg": 0.0,
-                        "qtyUnitCd": "BE",
-                        "qty": 1.0,
-                        "prc": 100,
-                        "splyAmt": 100,
-                        "dcRt": 0.0,
-                        "dcAmt": 0.0,
-                        "isrccCd": "",
-                        "isrccNm": "",
-                        "isrcRt": 0.0,
-                        "isrcAmt": 0.0,
-                        "vatTaxblAmt": 0.0,
-                        "exciseTaxblAmt": 0,
-                        "tlTaxblAmt": 0.0,
-                        "tlAmt": 0.0,
-                        "iplCatCd": "IPL2",
-                        "iplAmt": 0.0,
-                        "iplTaxblAmt": 100,
-                        "vatAmt": 0.0,
-                        "exciseTxAmt": 0,
-                        "totAmt": 100
-                    }
-                ]
-            }
-        
-        self.call_create_credit_note_sale_client(payload)
+            "tpin": self.get_tpin(),
+            "bhfId": self.get_branch(),
+            "orgSdcId": self.get_org_sdc_id(),
+            "orgInvcNo": orgInvcNo,
+            "cisInvcNo": cisInvcNo,
+            "Customer": customer_name,
+            "custTpin": customer_tpin,
+            "salesTyCd": "N",
+            "rcptTyCd": "R",
+            "pmtTyCd": "01",
+            "salesSttsCd": "02",
+            "cfmDt": cfmDt,
+            "salesDt": salesDt,
+            "rfdRsnCd": "01",
+            "totItemCnt": len(item_list),
+            "taxblAmtA": flt(totals["taxable"], 4),
+            "taxRtA": 16,
+            "taxAmtA": flt(totals["vat"], 4),
+            "totTaxblAmt": flt(totals["taxable"], 4),
+            "totTaxAmt": flt(totals["vat"], 4),
+            "cashDcRt": cash_discount_rate,
+            "cashDcAmt": cash_discount_amt,
+            "totAmt": final_amount,
+            "prchrAcptcYn": "N",
+            "remark": "",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by,
+            "saleCtyCd": "1",
+            "currencyTyCd": currency,
+            "exchangeRt": "1",
+            "destnCountryCd": "",
+            "dbtRsnCd": "",
+            "invcAdjustReason": "",
+            "itemList": item_list
+        }
+
+        print("📦 SENDING PAYLOAD:", payload)
+        response = self.call_create_credit_note_sale_client(payload)
+        return response
+
+
+
 
 
 		
