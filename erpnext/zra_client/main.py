@@ -1,3 +1,4 @@
+from frappe import throw, _
 from datetime import datetime
 import requests
 import frappe
@@ -14,6 +15,7 @@ ZRA_SAVE_STOCK_MASTER = "/stockMaster/saveStockMaster"
 ZRA_SAVE_PURCHASE = "/trnsPurchase/savePurchase"
 ZRA_CREATE_CUSTOMER = "/branches/saveBrancheCustomers"
 ZRA_SALE = "/trnsSales/saveSales"
+UPDATE_IMPORT = "/imports/updateImportItems"
 INTERNAL_URL = "http://0.0.0.0:7000/"
 
 BRANCH_CODE = "000"
@@ -31,6 +33,7 @@ class ZRAClient:
         self.save_purchase_url = f"{self.base_url}{ZRA_SAVE_PURCHASE}"
         self.sale_url = f"{self.base_url}{ZRA_SALE}"
         self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
+        self.update_import_url = f"{self.base_url}{UPDATE_IMPORT}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
@@ -389,7 +392,26 @@ class ZRAClient:
             frappe.log_error(title="❌ Failed to sale debit note"
             , message=str(e))
             raise Exception(f"❌ Failed to normal sale: {e}")
-        
+    
+    def zra_client_update_import(self, payload):
+        try:
+            response = requests.post(self.update_import_url, json=payload, timeout=10)
+            response.raise_for_status()
+
+            print("Import update response:", response.text)
+
+            result = response.json()
+            if result.get("resultCd") != "000":
+                throw(_(f"🚫 ZRA Error: {result.get('resultMsg', 'Unknown error')}"))
+
+            return result
+
+        except requests.RequestException as e:
+            throw(_("🚫 Failed to update import in ZRA due to network or API error: {0}").format(e))
+
+        except ValueError:
+            throw(_("🚫 Invalid JSON response from ZRA API during import update."))
+
 
 
 
