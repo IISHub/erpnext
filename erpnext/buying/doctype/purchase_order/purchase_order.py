@@ -35,6 +35,7 @@ from erpnext.subcontracting.doctype.subcontracting_bom.subcontracting_bom import
 )
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
+from frappe import throw, _
 from erpnext.zra_client.purchase.main import zraPurchase
 
 class PurchaseOrder(BuyingController):
@@ -485,7 +486,17 @@ class PurchaseOrder(BuyingController):
 		super().on_submit()
 		purchase_obj = zraPurchase()
 		purchase_data = self.as_dict()
-		purchase_obj.create_purchase(purchase_data)
+		get_doc_name = purchase_data.get("name")
+		get_supplier = purchase_data.get("supplier")
+		is_import = purchase_data.get("custom_import", False)
+		print(f"custom_import: {is_import}")
+
+		if is_import is True or str(is_import).lower() == "true":
+			print("🚫 You cannot create a purchase order for an import transaction. Please select a valid supplier.")
+			throw(_("🚫 You cannot create a purchase order for an import transaction. Please select a valid supplier."))
+		else:
+			purchase_obj.create_purchase(purchase_data)
+
 
 		if self.is_against_so():
 			self.update_status_updater()
