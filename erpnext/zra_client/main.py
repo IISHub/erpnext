@@ -397,9 +397,6 @@ class ZRAClient:
         try:
             response = requests.post(self.update_import_url, json=payload, timeout=10)
             response.raise_for_status()
-
-            print("Import update response:", response.text)
-
             result = response.json()
             if result.get("resultCd") != "000":
                 throw(_(f"🚫 ZRA Error: {result.get('resultMsg', 'Unknown error')}"))
