@@ -29,6 +29,7 @@ class zraPurchase(ZRAClient):
 
 
     def create_purchase(self, purchase_data):
+        print("📦 Creating purchase with data:", purchase_data)
        
         payload = {
             "tpin": self.get_tpin_number(),
@@ -60,39 +61,21 @@ class zraPurchase(ZRAClient):
 
 
         for idx, item in enumerate(purchase_data.get("items", [])):
+            print(f"\n📄 Processing item #{idx + 1}")
+            print("🔍 Full item data:", item) 
             item_code = item.get("item_code")
             item_name = item.get("item_name")
-            requested_qty = flt(item.get("qty") or 0)
-
-            bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty", "projected_qty", "name"])
-            available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
-
-            # if requested_qty > available_qty:
-            #     frappe.throw(f"❌ Insufficient stock for item <b>{item_code}</b>:<br>"
-            #                  f"🧾 Requested: {requested_qty}<br>"
-            #                  f"📦 Available: {available_qty}")
-
-            remaining_qty = requested_qty
-            for b in bins:
-                if remaining_qty == 0:
-                    break
-                projected_qty = flt(b.get("projected_qty", 0))
-                actual_qty = flt(b.get("actual_qty", 0))
-                if projected_qty <= 0:
-                    continue
-                consume = min(projected_qty, remaining_qty)
-                frappe.db.set_value("Bin", b["name"], "projected_qty", projected_qty - consume)
-                frappe.db.set_value("Bin", b["name"], "actual_qty", actual_qty - consume)
-                remaining_qty -= consume
 
             item_doc = frappe.get_doc("Item", item_code)
 
             get_packaging_unit = item_doc.custom_packaging_unit_code or "PCS"
+
             r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{get_packaging_unit}/", timeout=5)
             r.raise_for_status()
             packaging_unit_code = r.json().get("code")
 
             get_qty_unit = item_doc.custom_units_of_measure or "PCS"
+            print("📦 Packaging unit code:", get_qty_unit)
             r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{get_qty_unit}/", timeout=5)
             r.raise_for_status()
             qty_unit_code = r.json().get("code")
