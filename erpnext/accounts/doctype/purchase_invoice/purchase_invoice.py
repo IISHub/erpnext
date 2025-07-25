@@ -43,7 +43,8 @@ from erpnext.stock.doctype.purchase_receipt.purchase_receipt import (
 	update_billed_amount_based_on_po,
 )
 
-
+from erpnext.zra_client.purchase.main import zraPurchase
+from erpnext.zra_client.imports.main import Imports
 class WarehouseMissingError(frappe.ValidationError):
 	pass
 
@@ -739,6 +740,10 @@ class PurchaseInvoice(BuyingController):
 
 	def on_submit(self):
 		super().on_submit()
+		purchase_obj = zraPurchase()
+		purchase_data = self.as_dict()
+	
+		purchase_obj.create_purchase(purchase_data)
 
 		self.check_prev_docstatus()
 

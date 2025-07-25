@@ -36,8 +36,7 @@ from erpnext.subcontracting.doctype.subcontracting_bom.subcontracting_bom import
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
 from frappe import throw, _
-from erpnext.zra_client.purchase.main import zraPurchase
-from erpnext.zra_client.imports.main import Imports
+
 class PurchaseOrder(BuyingController):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
@@ -484,21 +483,6 @@ class PurchaseOrder(BuyingController):
 
 	def on_submit(self):
 		super().on_submit()
-		purchase_obj = zraPurchase()
-		purchase_data = self.as_dict()
-		get_doc_name = purchase_data.get("name")
-		get_supplier = purchase_data.get("supplier")
-		is_import = purchase_data.get("custom_import", False)
-		print(f"custom_import: {is_import}")
-
-		if int(is_import) == 1:
-			import_data = purchase_data
-			import_obj = Imports()
-			import_obj.update_import(import_data)
-		else:
-			purchase_obj.create_purchase(import_obj)
-
-
 
 		if self.is_against_so():
 			self.update_status_updater()
