@@ -229,33 +229,30 @@ class ZRAClient:
 
 
     def save_stock(self, payload=None):
+        print("saving stock")
         if payload is None:
             frappe.throw("Payload is required to save stock")
 
         for item in payload.get("itemList", []):
             packaging_unit = item.get("pkgUnitCd")
             qty_unit = item.get("qtyUnitCd")
+            print("data:", packaging_unit, qty_unit)
 
             try:
                 r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/", timeout=5)
+                print("unit code response: ", r.text)
                 r.raise_for_status()
                 packaging_unit_code = r.json().get("code")
+                print("Pack code ", packaging_unit_code)
                 if not packaging_unit_code:
                     raise ValueError("No code returned for packaging unit")
             except Exception as e:
                 raise Exception(f"Packaging unit error ({packaging_unit}): {e}")
 
-            try:
-                r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{qty_unit}/", timeout=5)
-                r.raise_for_status()
-                qty_unit_code = r.json().get("code")
-                if not qty_unit_code:
-                    raise ValueError("No code returned for quantity unit")
-            except Exception as e:
-                raise Exception(f"Quantity unit error ({qty_unit}): {e}")
+           
 
             item["pkgUnitCd"] = packaging_unit_code
-            item["qtyUnitCd"] = qty_unit_code
+          
 
         try:
             print("Saving stock payload: ", payload)

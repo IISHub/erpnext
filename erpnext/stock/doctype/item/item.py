@@ -159,6 +159,8 @@ class Item(Document):
 		self.set_onload("asset_naming_series", get_asset_naming_series())
 		self.set_onload("current_valuation_method", get_valuation_method(self.name))
 
+
+
 	def autoname(self):
 		if frappe.db.get_default("item_naming_by") == "Naming Series":
 			if self.variant_of:
@@ -172,6 +174,7 @@ class Item(Document):
 
 		self.item_code = strip(self.item_code)
 		self.name = self.item_code
+
 
 	def before_insert(self):
 		item_data = self.as_dict()
@@ -308,8 +311,8 @@ class Item(Document):
 
 		print("Payload being sent:", json.dumps(payload, indent=2))
 		item_obj = zraItem()
-
 		item_obj.create_item_helper(payload)
+
 
 
 	def after_insert(self):

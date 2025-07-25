@@ -2,6 +2,7 @@
 # License: GNU General Public License v3. See license.txt
 
 
+from erpnext.zra_client.sales.main import zraSales
 import frappe
 import frappe.utils
 from frappe import _, msgprint, throw
@@ -446,6 +447,10 @@ class SalesInvoice(SellingController):
 		self.add_remarks()
 
 	def on_submit(self):
+		sell_order = self.as_dict()
+		print("**** sales****:",sell_order)
+		sale_obj = zraSales()
+		sale_obj.create_sale_normal(sell_order)
 		self.validate_pos_paid_amount()
 
 		if not self.auto_repeat:

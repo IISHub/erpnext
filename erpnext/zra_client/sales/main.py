@@ -77,7 +77,7 @@ class zraSales(ZRAClient):
             item_code = item.get("item_code")
             item_doc = frappe.get_doc("Item", item_code)
             qty = flt(item.get("qty", 1))
-            price = flt(item_doc.get("custom_default_unit_price", 0))
+            price = flt(item_doc.get("standard_rate", 0))
             gross = flt(qty * price, 4)
             bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
             available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)

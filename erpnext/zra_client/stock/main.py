@@ -13,6 +13,7 @@ class Stock(ZRAClient):
         return self.branch_code
 
     def create_stock(self, stock_data):
+        print("Creating stock with data:", stock_data)
         if not isinstance(stock_data, dict):
             frappe.throw("Invalid input: stock_data must be a dictionary")
 
@@ -54,7 +55,8 @@ class Stock(ZRAClient):
             "Disbursement": "E",
             "ReverseVAT": "RVAT"
         }
-
+        
+        print("looping items")
         for idx, item in enumerate(items, start=1):
             if not isinstance(item, dict):
                 frappe.log_error(f"Invalid item format. Expected dict, got {type(item)}")
