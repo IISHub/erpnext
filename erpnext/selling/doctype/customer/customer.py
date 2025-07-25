@@ -4,6 +4,7 @@
 
 import json
 
+from erpnext.zra_client.main import ZRAClient
 import frappe
 import frappe.defaults
 from frappe import _, msgprint, qb
@@ -27,44 +28,6 @@ from urllib.parse import urljoin
 import requests
 from urllib.parse import urljoin
 
-BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0/"
-
-class ZARCustomerClient:
-    def __init__(self, tpin, bhf_id="000"):
-        self.endpoint = "branches/saveBrancheCustomers"
-        self.url = urljoin(BASE_URL, self.endpoint)
-        self.headers = {"Content-Type": "application/json"}
-        self.tpin = tpin
-        self.bhf_id = bhf_id
-
-    def create_customer(self):
-        if not self.tpin:
-            raise ValueError("TPIN is required.")
-
-        payload = {
-            "tpin": 2484778002,
-            "bhfId": self.bhf_id,
-            "custNo": "097xxxxxxx",      
-            "custTpin": self.tpin,      
-            "custNm": "ZRA",              
-            "adrs": None,
-            "email": None,
-            "faxNo": None,
-            "useYn": "Y",
-            "remark": None,
-            "regrNm": "Admin",
-            "regrId": "Admin",
-            "modrNm": "Admin",
-            "modrId": "Admin"
-        }
-
-        try:
-            response = requests.post(self.url, headers=self.headers, json=payload)
-            print("Status Code:", response.status_code)
-            print("Response:", response.text)
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API request failed: {e}")
 
 
 
@@ -184,34 +147,44 @@ class Customer(TransactionBase):
 	
 
 
+
 	def before_insert(self):
-		print("===== Fields Being Sent During Customer Insert =====")
-		for field in frappe.get_meta(self.doctype).fields:
-			print(f"{field.fieldname}: {self.get(field.fieldname)}")
-		print("====================================================")
+		# Convert to dictionary for logging
+		customer_data = self.as_dict()
+		frappe.logger().info("Creating customer with data: {}".format(customer_data))
 
-		tpin = self.get("custom_customer_tpin")
+		# Extract fields safely
+		tpin = customer_data.get("custom_tpin")
+		customer_name = self.get("customer_name") or ""
+		email_id = self.get("email_id") or ""
+		mobile_no = self.get("mobile_no") or ""
+		created_by = self.get("owner") or frappe.session.user
+
+		print('Customer data: ', tpin, customer_name, email_id, mobile_no, created_by)
+
+		# Validate TPIN
 		if not tpin:
-			frappe.throw(_("Customer TPIN ({0}) is required.").format(frappe.bold("custom_customer_tpin")))
+			frappe.throw(_("Customer TPIN ({0}) is required.").format(frappe.bold("custom_tpin")))
 
-		# ✅ Validate if TPIN already exists
-		if frappe.db.exists("Customer", {"custom_customer_tpin": tpin}):
-			frappe.throw(
-				_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin))
-			)
+		# Prevent duplicates
+		if frappe.db.exists("Customer", {"custom_tpin": tpin}):
+			frappe.throw(_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin)))
 
-		# ✅ Call API only after confirming TPIN is unique
+		# Attempt API call
 		try:
-			client = ZARCustomerClient(tpin=tpin)
-			result = client.create_customer()
-			if result.get("resultCd") != "000":
+			client = ZRAClient()
+			result = client.create_customer(tpin, customer_name, email_id, mobile_no, created_by)
+
+			if not result or result.get("resultCd") != "000":
+				error_message = result.get("resultMsg", "Unknown Error") if result else "No response from ZRA"
 				frappe.throw(_("{0}: {1}").format(
 					frappe.bold("Customer Sync Failed"),
-					frappe.bold(result.get("resultMsg", "Unknown Error"))
+					frappe.bold(error_message)
 				))
-		except Exception as e:
-			frappe.throw(_("API call failed: {0}").format(frappe.bold(str(e))))
 
+		except Exception as e:
+			frappe.log_error(frappe.get_traceback(), "ZRA API Sync Error")
+			frappe.throw(_("API call failed: {0}").format(frappe.bold(str(e))))
 
 
 

@@ -3,11 +3,10 @@
 
 import copy
 import json
-import sqlite3
-import os
-from urllib.parse import urljoin
-from datetime import datetime, timedelta
+import random
+import requests
 import frappe
+from urllib.parse import quote
 from frappe import _, bold
 from frappe.model.document import Document
 from frappe.query_builder import Interval
@@ -35,59 +34,9 @@ from erpnext.controllers.item_variant import (
 	make_variant_item_code,
 	validate_item_variant_attributes,
 )
-
-
 from erpnext.stock.doctype.item_default.item_default import ItemDefault
 from erpnext.stock.utils import get_valuation_method
-
-
-import requests
-from urllib.parse import urljoin
-
-BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0/"
-
-import sqlite3
-#db_name='/home/tim/projects/izyane/frappe-bench/hints.db'
-import sqlite3
-
-
-
-
-class ZARItemClient:
-    def __init__(self, tpin, country_code, bhf_id="000"):
-        self.endpoint = "items/saveItem"
-        self.url = urljoin(BASE_URL, self.endpoint)
-        self.headers = {"Content-Type": "application/json"}
-        self.tpin = tpin
-        self.bhf_id = bhf_id
-        self.country_code = country_code  
-
-    def generate_item_code(self, product_type, packaging_unit, quantity_unit, last_number):
-        next_number = last_number + 1
-        formatted_number = f"{next_number:07d}" 
-        return f"{self.country_code}{product_type}{packaging_unit}{quantity_unit}{formatted_number}"
-
-    def save_item(self, payload):
-        if not self.tpin:
-            raise ValueError("TPIN is required.")
-        try:
-            response = requests.post(self.url, headers=self.headers, json=payload)
-            print("Status Code:", response.status_code)
-            print("Response:", response.text)
-
-            if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
-
-            data = response.json()
-            if data.get("resultCd") != "000":
-                raise Exception(f"API Error: {data.get('resultMsg')}")
-            return data
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API request failed: {e}")
-
-
-
-
+from erpnext.zra_client.item.main import zraItem
 
 class DuplicateReorderRows(frappe.ValidationError):
 	pass
@@ -204,13 +153,13 @@ class Item(Document):
 		weight_uom: DF.Link | None
 	# end: auto-generated types
 
+
 	def onload(self):
 		self.set_onload("stock_exists", self.stock_ledger_created())
 		self.set_onload("asset_naming_series", get_asset_naming_series())
 		self.set_onload("current_valuation_method", get_valuation_method(self.name))
 
 	def autoname(self):
-		print(111)
 		if frappe.db.get_default("item_naming_by") == "Naming Series":
 			if self.variant_of:
 				if not self.item_code:
@@ -218,186 +167,151 @@ class Item(Document):
 					make_variant_item_code(self.variant_of, template_item_name, self)
 			else:
 				from frappe.model.naming import set_name_by_naming_series
-
 				set_name_by_naming_series(self)
 				self.item_code = self.name
 
 		self.item_code = strip(self.item_code)
 		self.name = self.item_code
 
-	def generate_item_code(self, country_code, product_type, packaging_unit, quantity_unit, counter):
-		suffix = str(counter).zfill(7) 
-		return f"{country_code.upper()}{product_type}{packaging_unit.upper()}{quantity_unit.upper()}{suffix}"
-	
-	def before_update(self):
-		frappe.msgprint(f"About to update Item: {self.name}")
-		if not self.item_code:
-			frappe.throw("Item Code is mandatory before update!")
 	def before_insert(self):
-
-		from datetime import datetime
-		import requests
-		import json
-
-		print("Data being inserted:")
 		item_data = self.as_dict()
-		print(item_data)
+		print("Incoming item_data:", json.dumps(item_data, indent=2))
 
+		# Get item class code
+		get_item_class_code = item_data.get("custom_item_class_code", "").strip()
+		if not get_item_class_code:
+			frappe.throw("Missing custom_item_class_code")
+		print("Item class code:", get_item_class_code)
+
+		# Excise Tax Category
+		excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
+		exciseTxCatCd = "ECM" if excise_name == "Excise on Coal" else "EXEEG"
+
+		# Product Type
+		product_type = item_data.get("custom_product_type", "").strip()
+		itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
+
+		# Fetch item class code
 		try:
-			client = ZARItemClient(
-				tpin="2484778002",
-				country_code="ZM",
-				bhf_id="000"
-			)
+			encoded_class_code = quote(get_item_class_code)
+			res = requests.get(f"http://0.0.0.0:7000/api/get-item-class-by-name/{encoded_class_code}/", timeout=5)
+			res.raise_for_status()
+			data = res.json()
+			itemClsCd = data.get("itemClsCd")
+			if not itemClsCd:
+				frappe.throw(f"itemClsCd not found for '{get_item_class_code}'")
+		except requests.RequestException as e:
+			frappe.throw(f"Error fetching item class code: {e}")
 
-			now = datetime.now()
-			formatted_time = now.strftime('%Y%m%d%H%M%S')
-			print("Formatted Time:", formatted_time)
+		# Unit of Measure
+		unit_name = item_data.get("custom_units_of_measure", "Pair").strip()
+		try:
+			res = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{quote(unit_name)}/", timeout=5)
+			res.raise_for_status()
+			unit_data = res.json()
+			qtyUnitCd = unit_data.get("code")
+			if not qtyUnitCd:
+				frappe.throw(f"Unit code not found for '{unit_name}'")
+		except requests.RequestException as e:
+			frappe.throw(f"Error fetching unit code for '{unit_name}': {e}")
 
-			last_code = item_data.get("item_code", "0")
-			last_number = int(last_code) if str(last_code).isdigit() else 0
-			excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
-			exciseTxCatCd = "ECM" if excise_name == "Excise on Coal" else "EXEEG"
+		# Country code
+		country_name = item_data.get("custom_origin_place_code", "").strip().upper()
+		try:
+			res = requests.get(f"http://0.0.0.0:7000/country/{quote(country_name)}/", timeout=5)
+			res.raise_for_status()
+			country_data = res.json()
+			country_code = country_data.get("code")
+			if not country_code:
+				frappe.throw(f"Country code not found for '{country_name}'")
+		except requests.RequestException as e:
+			frappe.throw(f"Error fetching country code for '{country_name}': {e}")
 
-			# Determine item type
-			product_type = item_data.get("custom_product_type", "").strip()
-			itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
+		# Packaging unit code
+		packaging_unit = item_data.get("custom_packaging_unit_code", "").strip()
+		try:
+			res = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{quote(packaging_unit)}/", timeout=5)
+			res.raise_for_status()
+			packaging_data = res.json()
+			packaging_unit_code = packaging_data.get("code")
+			if not packaging_unit_code:
+				frappe.throw(f"Packaging unit code not found for '{packaging_unit}'")
+		except requests.RequestException as e:
+			frappe.throw(f"Error fetching packaging unit code for '{packaging_unit}': {e}")
 
-			unit_name = item_data.get("custom_units_of_measure", "Pair").strip()
-			try:
-				unit_response = requests.get(f"http://192.168.1.146:9010/unitofmeasure/{unit_name}/", timeout=5)
-				unit_response.raise_for_status()
-				unit_data = unit_response.json()
-				print("Unit API Response:", unit_data)
-				qtyUnitCd = unit_data.get("code")
-				if not qtyUnitCd:
-					frappe.throw("Error Getting Quantity unit code.")
-			except requests.RequestException as e:
-				frappe.throw(f"Failed to get unit code for '{unit_name}': {e}")
-			
-			country_name = item_data.get("custom_origin_place_code", "").strip().upper()
-			try:
-				url = f"http://192.168.1.146:9010/country/{country_name}/"
-				response = requests.get(url, timeout=5)
-				response.raise_for_status()
+		# VAT category
+		vat_map = {
+			"StandardRated": "A", "MinimumTaxableValue": "B", "Exports": "C1",
+			"ZeroRatingLocalPurchases": "C2", "ZeroRatedByNature": "C3",
+			"Exempt": "D", "Disbursement": "E", "ReverseVAT": "RVAT"
+		}
+		vat = item_data.get("custom_vat", "").replace(" ", "").strip()
+		vatCatCd = vat_map.get(vat, "A")
 
-				country_data = response.json()
-				country_code = country_data.get("code")
-				if not country_code:
-					frappe.throw(f"Country code not found in API response for '{country_name}'.")
+		# IPL category
+		ipl = item_data.get("custom_ipl_category_code", "").strip()
+		if not ipl:
+			frappe.throw("Insurance type is required")
+		iplCatCd = "IPL1" if ipl == "Insurance Premium Levy" else "IPL2"
 
-			except requests.RequestException as e:
-				frappe.throw(f"Failed to get country code for '{country_name}': {e}")
+		# Generate unique item_code
+		for _ in range(5):
+			rand_num = random.randint(1, 9999999)
+			formatted = f"{rand_num:07d}"
+			item_code = f"{country_code}{itemTyCd}{packaging_unit_code}{qtyUnitCd}{formatted}"
+			if not frappe.db.exists("Item", {"item_code": item_code}):
+				break
+		else:
+			frappe.throw("Failed to generate a unique item code after 5 attempts.")
 
-			custom_packaging_unit_code = item_data.get("custom_packaging_unit_code", "").strip()
+		print("Generated item_code:", item_code)
 
-			try:
-				url = f"http://192.168.1.146:9010/packaging-unit-code/{custom_packaging_unit_code}/"
+		# Set item_code and name
+		self.item_code = item_code
+		self.name = item_code
 
-				response = requests.get(url, timeout=5)
-				response.raise_for_status()
+		# Create payload for external API
+		created_by = item_data.get("owner", "System")
+		default_price = float(item_data.get("standard_rate", 0))
 
-				packaging_data = response.json()
-				print("Packaging Unit API Response:", packaging_data)
+		payload = {
+			"tpin": "2484778002",
+			"bhfId": "000",
+			"itemCd": item_code,
+			"itemClsCd": itemClsCd,
+			"itemTyCd": itemTyCd,
+			"itemNm": item_data.get("item_name") or "Unnamed",
+			"orgnNatCd": country_code,
+			"pkgUnitCd": packaging_unit_code,
+			"qtyUnitCd": qtyUnitCd,
+			"vatCatCd": vatCatCd,
+			"iplCatCd": iplCatCd,
+			"tlCatCd": None,
+			"exciseTxCatCd": exciseTxCatCd,
+			"btchNo": None,
+			"bcd": None,
+			"dftPrc": default_price,
+			"manufacturerTpin": "null",
+			"manufacturerItemCd": "null",
+			"rrp": str(default_price),
+			"svcChargeYn": "Y",
+			"rentalYn": "N",
+			"addInfo": None,
+			"sftyQty": item_data.get("opening_stock", 0),
+			"isrcAplcbYn": "N",
+			"useYn": "Y",
+			"regrNm": created_by,
+			"regrId": created_by,
+			"modrNm": created_by,
+			"modrId": created_by
+		}
 
-				packaging_unit_code = packaging_data.get("code")
-				if not packaging_unit_code:
-					frappe.throw(f"Packaging unit code not found for '{custom_packaging_unit_code}'.")
+		print("Payload being sent:", json.dumps(payload, indent=2))
+		item_obj = zraItem()
 
-			except requests.RequestException as e:
-				frappe.throw(f"Failed to get packaging unit code for '{custom_packaging_unit_code}': {e}")
-
-			item_code = self.generate_item_code(
-                country_code=country_code,           
-                product_type="2",            
-                packaging_unit=packaging_unit_code,         
-                quantity_unit=qtyUnitCd ,          
-                counter=last_number + 1       
-            )
-
-
-
-
-				
-
-			vat_code_map = {
-				"StandardRated": "A",
-				"MinimumTaxableValue": "B",
-				"Exports": "C1",
-				"ZeroRatingLocalPurchases": "C2",
-				"ZeroRatedByNature": "C3",
-				"Exempt": "D",
-				"Disbursement": "E",
-				"ReverseVAT": "RVAT"
-			}
-			custom_vat = item_data.get("custom_vat", "").replace(" ", "").strip()
-			vatCatCd = vat_code_map.get(custom_vat, "A")
-			iplCatCd = item_data.get("").strip()
-			
-			
-
-			created_by = item_data.get("owner", "System")
-			default_price = float(item_data.get("custom_default_unit_price", 0))
-			payload = {
-				"tpin": client.tpin,
-				"bhfId": client.bhf_id,
-				"itemCd": item_code,
-				"itemClsCd": "43322555",
-				"itemTyCd": itemTyCd,
-				"itemNm": item_data.get("item_name") or "Unnamed",
-				"itemStdNm": "Corn Flakes",
-				"orgnNatCd": country_code,
-				"pkgUnitCd": packaging_unit_code,
-				"qtyUnitCd": qtyUnitCd,
-				"vatCatCd": vatCatCd,
-				"iplCatCd": "IPL1",
-				"tlCatCd": None,
-				"exciseTxCatCd": exciseTxCatCd,
-				"btchNo": None,
-				"bcd": None,
-				"dftPrc": default_price,
-				"manufacturerTpin": "null",
-				"manufacturerItemCd": "null",
-				"rrp": str(default_price),
-				"svcChargeYn": "Y",
-				"rentalYn": "N",
-				"addInfo": None,
-				"sftyQty": item_data.get("sftyQty", 0),
-				"isrcAplcbYn": "N",
-				"useYn": "Y",
-				"regrNm": created_by,
-				"regrId": created_by,
-				"modrNm": created_by,
-				"modrId": created_by
-			}
-
-			print("Payload being sent:", json.dumps(payload, indent=2))
+		item_obj.create_item_helper(payload)
 
 
-			response = requests.post(client.url, headers=client.headers, json=payload, timeout=10)
-			print("POST Status Code:", response.status_code)
-
-			if response.status_code != 200:
-				frappe.throw(f"External API returned error code {response.status_code}: {response.text}")
-
-			response_data = response.json()
-			print("POST Response Data:", response_data)
-
-			if response_data.get("resultCd") == "000":
-				frappe.msgprint("Item successfully synced with external system.")
-			else:
-				frappe.throw(f"API Error: {response_data.get('resultMsg')}")
-
-		except requests.exceptions.RequestException as e:
-			frappe.throw(f"Request failed: {str(e)}")
-
-		except ValueError as ve:
-			frappe.throw(f"Data formatting error: {str(ve)}")
-
-		except Exception as ex:
-			frappe.throw(f"An unexpected error occurred: {str(ex)}")
-
-		     
 	def after_insert(self):
 		"""set opening stock and item price"""
 		if self.standard_rate:
@@ -448,9 +362,7 @@ class Item(Document):
 			self.old_item_group = frappe.db.get_value(self.doctype, self.name, "item_group")
 
 	def on_update(self):
-		print(1)
 		self.update_variants()
-		
 		self.update_item_price()
 
 	def validate_description(self):
@@ -759,44 +671,14 @@ class Item(Document):
 		if self.is_new():
 			return
 
-		current = frappe.db.get_value(
-			"Item Price",
-			{"item_code": self.name},
-			["item_name", "item_description", "brand"],
-			as_dict=True
-		)
-
-		if not current:
-			print(f"No Item Price found for item_code: {self.name}")
-			return
-
-		# Compare and collect changed fields
-		updated_fields = {}
-		if current.item_name != self.item_name:
-			updated_fields["item_name"] = (current.item_name, self.item_name)
-		if current.item_description != self.description:
-			updated_fields["item_description"] = (current.item_description, self.description)
-		if current.brand != self.brand:
-			updated_fields["brand"] = (current.brand, self.brand)
-
-		if not updated_fields:
-			print(f"No changes to update for item_code: {self.name}")
-			return
-
-		# Print changed fields
-		print(f"Updating Item Price for item_code: {self.name}")
-		for field, (old, new) in updated_fields.items():
-			print(f"- {field}: '{old}' → '{new}'")
-
-		# Perform the update
 		frappe.db.sql(
 			"""
-			UPDATE `tabItem Price`
-			SET
-				item_name = %(item_name)s,
-				item_description = %(item_description)s,
-				brand = %(brand)s
-			WHERE item_code = %(item_code)s
+				UPDATE `tabItem Price`
+				SET
+					item_name=%(item_name)s,
+					item_description=%(item_description)s,
+					brand=%(brand)s
+				WHERE item_code=%(item_code)s
 			""",
 			dict(
 				item_name=self.item_name,
@@ -805,7 +687,6 @@ class Item(Document):
 				item_code=self.name,
 			),
 		)
-
 
 	def on_trash(self):
 		frappe.db.sql("""delete from tabBin where item_code=%s""", self.name)
@@ -942,42 +823,36 @@ class Item(Document):
 		frappe.db.set_single_value("Stock Settings", "allow_negative_stock", existing_allow_negative_stock)
 
 	def update_bom_item_desc(self):
-		print('higing')
+		if self.is_new():
+			return
 
 		if self.db_get("description") != self.description:
-			print(f"Description changed from '{self.db_get('description')}' to '{self.description}'")
+			frappe.db.sql(
+				"""
+				update `tabBOM`
+				set description = %s
+				where item = %s and docstatus < 2
+			""",
+				(self.description, self.name),
+			)
 
 			frappe.db.sql(
 				"""
-				UPDATE `tabBOM`
-				SET description = %s
-				WHERE item = %s AND docstatus < 2
-				""",
+				update `tabBOM Item`
+				set description = %s
+				where item_code = %s and docstatus < 2
+			""",
 				(self.description, self.name),
 			)
-			print("Updated description in tabBOM.")
 
 			frappe.db.sql(
 				"""
-				UPDATE `tabBOM Item`
-				SET description = %s
-				WHERE item_code = %s AND docstatus < 2
-				""",
+				update `tabBOM Explosion Item`
+				set description = %s
+				where item_code = %s and docstatus < 2
+			""",
 				(self.description, self.name),
 			)
-			print("Updated description in tabBOM Item.")
-
-			frappe.db.sql(
-				"""
-				UPDATE `tabBOM Explosion Item`
-				SET description = %s
-				WHERE item_code = %s AND docstatus < 2
-				""",
-				(self.description, self.name),
-			)
-			print("Updated description in tabBOM Explosion Item.")
-		else:
-			print("Description has not changed, no update needed.")
 
 	def validate_item_defaults(self):
 		companies = {row.company for row in self.item_defaults}
@@ -1024,14 +899,12 @@ class Item(Document):
 				)
 
 	def update_variants(self):
-		print('updates')
 		if self.flags.dont_update_variants or frappe.db.get_single_value(
 			"Item Variant Settings", "do_not_update_variants"
 		):
 			return
 		if self.has_variants:
 			variants = frappe.db.get_all("Item", fields=["item_code"], filters={"variant_of": self.name})
-			print(variants)
 			if variants:
 				if len(variants) <= 30:
 					update_variants(variants, self, publish_progress=False)
@@ -1638,13 +1511,10 @@ def get_item_attribute(parent, attribute_value=""):
 
 
 def update_variants(variants, template, publish_progress=True):
-	print('last')
 	total = len(variants)
 	for count, d in enumerate(variants, start=1):
 		variant = frappe.get_doc("Item", d)
 		copy_attributes_to_variant(template, variant)
-
-
 		variant.save()
 		if publish_progress:
 			frappe.publish_progress(count / total * 100, title=_("Updating Variants..."))
@@ -1672,7 +1542,6 @@ def validate_item_default_company_links(item_defaults: list[ItemDefault]) -> Non
 						),
 						title=_("Invalid Item Defaults"),
 					)
-
 
 
 @frappe.whitelist()
