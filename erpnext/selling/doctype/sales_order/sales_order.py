@@ -42,9 +42,9 @@ from erpnext.stock.get_item_details import (
 	get_price_list_rate,
 )
 from erpnext.stock.stock_balance import get_reserved_qty, update_bin_qty
-from erpnext.zra_client.main import ZRAClient
+
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
-from erpnext.zra_client.sales.main import zraSales
+
 
 class WarehouseRequired(frappe.ValidationError):
 	pass
@@ -440,9 +440,7 @@ class SalesOrder(SellingController):
 	def on_submit(self):
 		self.check_credit_limit()
 		self.update_reserved_qty()
-		sell_order = self.as_dict()
-		sale_obj = zraSales()
-		sale_obj.create_sale_normal(sell_order)
+	
 
 		frappe.get_cached_doc("Authorization Control").validate_approving_authority(
 			self.doctype, self.company, self.base_grand_total, self
