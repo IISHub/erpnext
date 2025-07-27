@@ -85,23 +85,42 @@ class ZRAClient:
             raise Exception(f"API request failed: {e}")
 
     def update_item(self, **kwargs):
-        item_class_code = kwargs.get("item_class_code")
+        item_class_code = kwargs.get("custom_item_class_code")
         item_code = kwargs.get("item_code")
         item_name = kwargs.get("item_name")
-        product_type = kwargs.get("product_type")
-        origin_place = kwargs.get("origin_place")
-        packaging_unit = kwargs.get("packaging_unit")
-        qty_unit = kwargs.get("qty_unit")
-        vat_category = kwargs.get("vat_category")
-        ipl_category = kwargs.get("ipl_category")
-        tl_category = kwargs.get("tl_category")
-        excise_tax_category = kwargs.get("excise_tax_category")
+        product_type = kwargs.get("custom_product_type")
+        origin_place = kwargs.get("custom_origin_place_code")
+        packaging_unit = kwargs.get("custom_packaging_unit_code")
+        qty_unit = kwargs.get("custom_units_of_measure")
+        vat_category = kwargs.get("custom_vat")
+        ipl_category = kwargs.get("custom_ipl_category_code")
+        # tl_category = kwargs.get("tl_category")
+        excise_tax_category = kwargs.get("custom_excise_tax_category_code")
         use_yn = kwargs.get("use_yn", "Y")
         user = kwargs.get("user", "ADMIN")
+        price = kwargs.get("standard_rate")
+
+        required_fields = {
+        "item_class_code": item_class_code,
+        "item_code": item_code,
+        "item_name": item_name,
+        "product_type": product_type,
+        "origin_place": origin_place,
+        "packaging_unit": packaging_unit,
+        "qty_unit": qty_unit,
+        "vat_category": vat_category,
+        "ipl_category": ipl_category,
+        # "tl_category": tl_category,
+        "excise_tax_category": excise_tax_category
+    }
+        print("Received values:")
+        for key, value in required_fields.items():
+            print(f"  {key}: {value}")
+
 
         if not all([item_class_code, item_code, item_name, product_type, origin_place,
                     packaging_unit, qty_unit, vat_category, ipl_category,
-                    tl_category, excise_tax_category]):
+                    excise_tax_category]):
             frappe.throw("Missing required item details for ZRA update.")
 
 
@@ -177,7 +196,7 @@ class ZRAClient:
 
         # IPL, TL, Excise categories (assuming these are fixed mappings based on the original code)
         iplCatCd = "IPL1" if ipl_category == "Insurance Premium Levy" else "IPL2"
-        tlCatCd = "TL" if tl_category == "Tourism Levy" else "F"
+        tlCatCd = "TL"
         exciseTxCatCd = "ECM" if excise_tax_category == "Excise on Coal" else "EXEEG"
 
         if use_yn not in ("Y", "N"):
@@ -199,7 +218,7 @@ class ZRAClient:
             "iplCatCd": iplCatCd,
             "tlCatCd": tlCatCd,
             "exciseTxCatCd": exciseTxCatCd,
-            "dftPrc": 15, 
+            "dftPrc": price, 
             "manufacturerTpin": self.tpin, 
             "manufacturerItemCd": "1234",
             "rrp": "1000",
@@ -221,6 +240,7 @@ class ZRAClient:
             response = requests.post(self.update_url, json=payload, timeout=10)
             print("Response status:", response.status_code)
             response.raise_for_status() 
+            print(response.json())
             return response.json()
         except requests.exceptions.RequestException as e:
             frappe.throw(f"Failed to update item in ZRA due to network or API error: {e}")
@@ -229,30 +249,33 @@ class ZRAClient:
 
 
     def save_stock(self, payload=None):
-        print("saving stock")
         if payload is None:
             frappe.throw("Payload is required to save stock")
 
         for item in payload.get("itemList", []):
             packaging_unit = item.get("pkgUnitCd")
             qty_unit = item.get("qtyUnitCd")
-            print("data:", packaging_unit, qty_unit)
 
             try:
                 r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/", timeout=5)
-                print("unit code response: ", r.text)
                 r.raise_for_status()
                 packaging_unit_code = r.json().get("code")
-                print("Pack code ", packaging_unit_code)
                 if not packaging_unit_code:
                     raise ValueError("No code returned for packaging unit")
             except Exception as e:
                 raise Exception(f"Packaging unit error ({packaging_unit}): {e}")
 
-           
+            try:
+                r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{qty_unit}/", timeout=5)
+                r.raise_for_status()
+                qty_unit_code = r.json().get("code")
+                if not qty_unit_code:
+                    raise ValueError("No code returned for quantity unit")
+            except Exception as e:
+                raise Exception(f"Quantity unit error ({qty_unit}): {e}")
 
             item["pkgUnitCd"] = packaging_unit_code
-          
+            item["qtyUnitCd"] = qty_unit_code
 
         try:
             print("Saving stock payload: ", payload)
@@ -331,6 +354,7 @@ class ZRAClient:
 
         
     def normal_sale(self, payload):
+        print("**** calling sale ***")
         try:
             response = requests.post(self.sale_url, json=payload)
             print("🔄 Raw response object:", response)
@@ -364,48 +388,77 @@ class ZRAClient:
             raise Exception(f"❌ Network or connection error: {e}")
         
 
-    def sale_credit_note(self, payload):
-        print(payload)
+    def credit_sale(self, payload):
+        print("**** calling credit sale ***")
         try:
             response = requests.post(self.sale_url, json=payload)
-            print("✅ Credit note response status:", response.status_code)
-            if response.headers.get('Content-Type') == 'application/json':
-                print("📦 Response content:", response.json())
+            print("🔄 Raw response object:", response)
+            print("📦 Response Status Code:", response.status_code)
+
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    print("✅ ZRA Response JSON:", data)
+
+                    if data.get("resultCd") != "000":
+                        raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
+                    return data
+                except ValueError:
+                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+                
+
+            elif response.status_code == 400:
+                try:
+                    data = response.json()
+                    print(data)
+                    error_message = data.get("error", "Unknown error")
+                    raise Exception(f"Error saving credit sale")   
+
+                except ValueError:
+                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
             else:
-                print("📦 Response content:", response.text)
-            return response
+                raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
         except requests.RequestException as e:
-            frappe.log_error(
-                title="❌ Failed to sale credit note",
-                message=str(e)
-            )
-            raise Exception(f"❌ Failed to post credit note sale: {e}")
-
-    def sale_debit_note(self):
+            frappe.log_error(title="❌ Failed to send credit sale", message=str(e))
+            raise Exception(f"❌ Network or connection error: {e}")
+        
+        
+        
+    def sale_debit_note(self, payload):
         try:
-            response = requests.post(self.sale_url)
+            response = requests.post(self.sale_url, json=payload)
+            print("✅ Debit note response status:", response.status_code)
+
+            if response.headers.get('Content-Type', '').startswith('application/json'):
+                resp_json = response.json()
+                print("📦 Response content:", resp_json)
+                return resp_json
+            else:
+                frappe.log_error(title="❌ Debit note response not JSON",
+                                message=f"Content-Type: {response.headers.get('Content-Type')}")
+                return None
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to sale debit note"
-            , message=str(e))
+            frappe.log_error(title="❌ Failed to sale debit note", message=str(e))
             raise Exception(f"❌ Failed to normal sale: {e}")
+
     
     def zra_client_update_import(self, payload):
-        try:
-            response = requests.post(self.update_import_url, json=payload, timeout=10)
-            response.raise_for_status()
-            result = response.json()
-            if result.get("resultCd") != "000":
-                throw(_(f"🚫 ZRA Error: {result.get('resultMsg', 'Unknown error')}"))
+        
+        response = requests.post(self.update_import_url, json=payload, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        print(result)
 
-            return result
+        if result.get("resultCd") in ["000", "001"]:
+            print("✅ Import update successful.")
+        else:
+            frappe.throw(_("🚫 ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
 
-        except requests.RequestException as e:
-            throw(_("🚫 Failed to update import in ZRA due to network or API error: {0}").format(e))
+        return result
 
-        except ValueError:
-            throw(_("🚫 Invalid JSON response from ZRA API during import update."))
+
 
 
 

@@ -671,3 +671,6 @@ doc_events = {
         "on_update": "erpnext.controllers.item_variant.log_item_changes"
     }
 }
+doctype_list_js = {
+    "Purchase Invoice": "erpnext/accounts/doctype/purchase_invoice/purchase_invoice_list.js"
+}

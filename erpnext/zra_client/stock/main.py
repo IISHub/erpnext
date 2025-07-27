@@ -1,3 +1,4 @@
+import requests
 from erpnext.zra_client.main import ZRAClient
 import frappe
 from frappe.utils import flt
@@ -126,7 +127,9 @@ class Stock(ZRAClient):
 
 
         try:
-            response = self.save_stock(payload)
+            response = self.save_stock(payload)  
+       
+
             if isinstance(response, dict) and response.get("resultCd") == "000":
                 update_stock_master_payload = {
                     "tpin": payload.get("tpin"),

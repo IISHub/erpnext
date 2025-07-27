@@ -448,9 +448,23 @@ class SalesInvoice(SellingController):
 
 	def on_submit(self):
 		sell_order = self.as_dict()
-		print("**** sales****:",sell_order)
 		sale_obj = zraSales()
-		sale_obj.create_sale_normal(sell_order)
+		is_return = sell_order.get("is_return")
+		is_debit_note = sell_order.get("is_debit_note")
+
+
+
+		if is_debit_note  == 1:
+			sale_obj.debit_sale(sell_order)
+
+		elif is_return == 1:
+			print("**** credit sale****:",sell_order)
+			sale_obj.create_credit_note_payload(sell_order)
+
+		else:
+			print("**** nornal sale****:",sell_order)
+			sale_obj.create_sale_normal(sell_order)
+
 		self.validate_pos_paid_amount()
 
 		if not self.auto_repeat:

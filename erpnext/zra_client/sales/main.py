@@ -7,6 +7,8 @@ import requests
 import threading
 from frappe.utils import flt
 from datetime import datetime
+import frappe
+from frappe import get_doc
 from erpnext.zra_client.main import ZRAClient
 
 now = datetime.now()
@@ -29,13 +31,16 @@ class zraSales(ZRAClient):
         return self.normal_sale(payload)
     
     def call_create_credit_note_sale_client(self, payload):
-        return self.sale_credit_note(payload)
+        return self.credit_sale(payload)
 
     def update_stock_after_purchase(self, payload):
         return self.update_stock_after_purchase_view(payload)
 
     def update_stock_master_after_purchase(self, payload):
         return self.save_stock_master(payload)
+    
+    def call_debit_sale_client(self, payload):
+        return self.sale_debit_note(payload)
     
 
     def update_rcptNo_delayed(self, docname, rcpt_no, delay=10):
@@ -81,11 +86,6 @@ class zraSales(ZRAClient):
             gross = flt(qty * price, 4)
             bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
             available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
-
-            # if qty > available_qty:
-            #     frappe.throw(
-            #         f"Insufficient stock for item <b>{item_code}</b>: Ordered: {qty}, Available: {available_qty}"
-            #     )
 
             discount_pct = flt(item.get("discount_percentage", 0))
             discount_amt = flt(gross * discount_pct / 100, 4)
@@ -297,115 +297,166 @@ class zraSales(ZRAClient):
 
 
 
-    def create_credit_note_sale(self, cancel_data):
-        print("Sale cancelled", cancel_data)
+    def create_credit_note_payload(self, credit_note_doc):
+        now = datetime.now()
 
-        # Receipt number and new CIS Invoice No
-        rcpt_no = cancel_data.get("name")
-        cisInvcNo = f'CIS{rcpt_no}-{random.randint(1000, 9999)}'
-
-        # Get customer info
-        customer_name = cancel_data.get("customer") or cancel_data.get("customer_name") or ""
-        customer_doc = frappe.get_doc("Customer", customer_name)
-        customer_tpin = customer_doc.get("custom_customer_tpin") or ""
-
-        created_by = cancel_data.get("owner") or "system"
-        currency = cancel_data.get("currency") or "ZMW"
-        cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
-        salesDt = datetime.now().strftime('%Y%m%d')
-
-        get_name = cancel_data.get("name")
-
-        if not get_name:
-            frappe.throw("Sale cancellation failed: 'name' field is required in cancel_data.")
+        customer_name = credit_note_doc.get("customer") or credit_note_doc.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name) if customer_name else None
+        customer_tpin = customer_doc.get("custom_customer_tpin") if customer_doc else ""
+        
+        cisInvcNo = credit_note_doc.get("name", f"CN-{random.randint(1000,9999)}")
+        original_invoice_no = credit_note_doc.get("return_against")
 
         try:
-
-            response = requests.get("http://0.0.0.0:7000/api/get-rcpt-no/", params={"docname": get_name})
-
-            response.raise_for_status() 
-
-            data = response.json()
-            orgInvcNo = data.get("rcpNo")
-
+            original_invoice = frappe.get_doc("Sales Invoice", original_invoice_no)
+            orgInvcNo = original_invoice.custom_rcpt_no if hasattr(original_invoice, 'custom_rcpt_no') else None
             if not orgInvcNo:
-                frappe.throw("Sale cancellation failed: 'orgInvcNo' not found in response.")
+                frappe.throw("Original invoice receipt number not found")
+        except Exception as e:
+            frappe.throw(f"Failed to get original invoice: {str(e)}")
 
-        except Exception as e: 
-            frappe.throw(f"Sale cancellation failed: {str(e)}")
+        created_by = credit_note_doc.get("owner") or "system"
+        currency = credit_note_doc.get("currency") or "ZMW"
+
+        totals = {
+            'gross': 0.0,
+            'discount': 0.0,
+            'net': 0.0,
+            'taxable': 0.0,
+            'vat': 0.0
+        }
+
         item_list = []
-        totals = {"net": 0.0, "vat": 0.0, "taxable": 0.0}
+        items = credit_note_doc.get("items", [])
+        for i, item in enumerate(items, 1):
+            item_code = item.get("item_code")
+            item_doc = frappe.get_doc("Item", item_code)
+            qty = abs(flt(item.get("qty", 1))) 
+            price = flt(item.get("rate") or item_doc.get("standard_rate", 0))
+            gross = flt(qty * price, 4)
 
-        # Process each item in cancel_data items
-        for idx, item in enumerate(cancel_data.get("items", []), start=1):
-            price = flt(item.get("rate") or 0)
-            quantity = flt(item.get("qty") or 1)
-            net_amount = flt(price * quantity, 4)
-            taxable_amount = net_amount
-            vat_amount = flt(taxable_amount * 0.16, 4)
+            discount_pct = flt(item.get("discount_percentage", 0))
+            discount_amt = flt(gross * discount_pct / 100, 4)
+            net = flt(gross - discount_amt, 4)
+            taxable = flt(net / 1.16, 4)
+            vat = flt(taxable * 0.16, 4)
 
-            totals["net"] += net_amount
-            totals["taxable"] += taxable_amount
-            totals["vat"] += vat_amount
+            totals['gross'] += gross
+            totals['discount'] += discount_amt
+            totals['net'] += net
+            totals['taxable'] += taxable
+            totals['vat'] += vat
 
+            original_item = next((x for x in original_invoice.items if x.item_code == item_code), None)
+            
             item_list.append({
-                "itemSeq": idx,
-                "itemCd": item.get("item_code") or "",
-                "itemClsCd": "A",
-                "itemNm": item.get("item_name") or "",
-                "bcd": "",
-                "pkgUnitCd": "EA",
+                "itemSeq": i,
+                "itemCd": item_code,
+                "itemClsCd": "50102518",
+                "itemNm": item.get("item_name"),
+                "bcd": item_doc.get("custom_origin_place_code", ""),
+                "pkgUnitCd": "WRAP",
                 "pkg": 1,
                 "qtyUnitCd": "EA",
-                "qty": quantity,
-                "prc": price,
-                "splyAmt": taxable_amount,
-                "dcRt": 0,
-                "dcAmt": 0,
-                "taxblAmt": taxable_amount,
-                "taxTyCd": "A",
-                "taxAmt": vat_amount,
-                "totAmt": flt(taxable_amount + vat_amount, 4),
-                "remark": ""
+                "qty": qty,
+                "prc": flt(price, 4),
+                "splyAmt": gross,
+                "dcRt": discount_pct,
+                "dcAmt": discount_amt,
+                "vatCatCd": "A",  # Standard VAT rate
+                "vatTaxblAmt": taxable,
+                "vatAmt": vat,
+                "totAmt": flt(taxable + vat, 4),
+                "exciseTxCatCd": "",
+                "tlCatCd": "",
+                "iplCatCd": "",
+                "exciseTaxblAmt": 0.0,
+                "tlTaxblAmt": 0.0,
+                "iplTaxblAmt": 0.0,
+                "iplAmt": 0.0,
+                "tlAmt": 0.0,
+                "exciseTxAmt": 0.0
             })
 
-        # Calculate cash discount only if applicable
-        raw_total = flt(totals["taxable"] + totals["vat"], 4)
-        if raw_total > 0:
-            cash_discount_rate = 25.0
-            cash_discount_amt = flt(raw_total * cash_discount_rate / 100, 4)
-        else:
-            cash_discount_rate = 0.0
-            cash_discount_amt = 0.0
-
-        final_amount = flt(raw_total - cash_discount_amt, 4)
-
         payload = {
-            "tpin": self.get_tpin(),
-            "bhfId": self.get_branch(),
-            "orgSdcId": self.get_org_sdc_id(),
-            "orgInvcNo": orgInvcNo,
+            "tpin": self.tpin,
+            "bhfId": self.branch_code,
+            "orgSdcId": "SDC0010002709",
             "cisInvcNo": cisInvcNo,
+            "orgInvcNo": orgInvcNo,
             "Customer": customer_name,
             "custTpin": customer_tpin,
             "salesTyCd": "N",
-            "rcptTyCd": "R",
+            "rcptTyCd": "R",  # Credit note
             "pmtTyCd": "01",
             "salesSttsCd": "02",
-            "cfmDt": cfmDt,
-            "salesDt": salesDt,
-            "rfdRsnCd": "01",
+            "cfmDt": now.strftime("%Y%m%d%H%M%S"),
+            "salesDt": now.strftime("%Y%m%d"),
+            "rfdRsnCd": "01",  # Return of goods
             "totItemCnt": len(item_list),
-            "taxblAmtA": flt(totals["taxable"], 4),
+            
+            # Taxable amounts - only populate category A (16%) and zero others
+            "taxblAmtA": round(totals['taxable'], 2),
+            "taxblAmtB": 0.0,
+            "taxblAmtC1": 0.0,
+            "taxblAmtC2": 0.0,
+            "taxblAmtC3": 0.0,
+            "taxblAmtD": 0.0,
+            "taxblAmtRvat": 0.0,
+            "taxblAmtE": 0.0,
+            "taxblAmtF": 0.0,
+            "taxblAmtIpl1": 0.0,
+            "taxblAmtIpl2": 0.0,
+            "taxblAmtTl": 0.0,
+            "taxblAmtEcm": 0.0,
+            "taxblAmtExeeg": 0.0,
+            "taxblAmtTot": 0.0,  # Must be zero when using specific categories
+            
+            # Tax rates - only populate category A (16%) and zero others
             "taxRtA": 16,
-            "taxAmtA": flt(totals["vat"], 4),
-            "totTaxblAmt": flt(totals["taxable"], 4),
-            "totTaxAmt": flt(totals["vat"], 4),
-            "cashDcRt": cash_discount_rate,
-            "cashDcAmt": cash_discount_amt,
-            "totAmt": final_amount,
+            "taxRtB": 0,
+            "taxRtC1": 0,
+            "taxRtC2": 0,
+            "taxRtC3": 0,
+            "taxRtD": 0,
+            "tlAmt": 0.0,
+            "taxRtRvat": 0,
+            "taxRtE": 0,
+            "taxRtF": 0,
+            "taxRtIpl1": 0,
+            "taxRtIpl2": 0,
+            "taxRtTl": 0,
+            "taxRtEcm": 0,
+            "taxRtExeeg": 0,
+            "taxRtTot": 0,  # Must be zero when using specific rates
+            
+            # Tax amounts - only populate category A (16%) and zero others
+            "taxAmtA": round(totals['vat'], 2),
+            "taxAmtB": 0.0,
+            "taxAmtC1": 0.0,
+            "taxAmtC2": 0.0,
+            "taxAmtC3": 0.0,
+            "taxAmtD": 0.0,
+            "taxAmtRvat": 0.0,
+            "taxAmtE": 0.0,
+            "taxAmtF": 0.0,
+            "taxAmtIpl1": 0.0,
+            "taxAmtIpl2": 0.0,
+            "taxAmtTl": 0.0,
+            "taxAmtEcm": 0.0,
+            "taxAmtExeeg": 0.0,
+            "taxAmtTot": 0.0,  # Must be zero when using specific categories
+            
+            # Totals
+            "totTaxblAmt": round(totals['taxable'], 2),
+            "totTaxAmt": round(totals['vat'], 2),
+            "totAmt": round(abs(totals['net']), 2),
+            
+            # Other fields
+            "cashDcRt": 0.0,
+            "cashDcAmt": 0.0,
             "prchrAcptcYn": "N",
-            "remark": "",
+            "remark": credit_note_doc.get("remarks") or "",
             "regrId": created_by,
             "regrNm": created_by,
             "modrId": created_by,
@@ -418,10 +469,181 @@ class zraSales(ZRAClient):
             "invcAdjustReason": "",
             "itemList": item_list
         }
+        if not abs(payload["totAmt"] - (payload["totTaxblAmt"] + payload["totTaxAmt"])) < 0.01:
+            frappe.throw("Amount validation failed: Total amount must equal taxable amount plus tax amount")
 
-        print("📦 SENDING PAYLOAD:", payload)
+        print(payload)
         response = self.call_create_credit_note_sale_client(payload)
-        return response
+
+        if response.get("resultCd") == "000":
+                if response.get("data") and response["data"].get("rcptNo"):
+                    rcpt_no = response["data"]["rcptNo"]
+                    doc_name = credit_note_doc.get("name")
+                    self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
+                    frappe.msgprint(f"✅ Credit Note created successfully. Receipt No: {rcpt_no}")
+                else:
+                    frappe.msgprint("✅ Credit Note created successfully but no receipt number was returned")
+        else:
+            error_msg = response.get("resultMsg", "Unknown error occurred")
+            frappe.throw(f"❌ Failed to create Credit Note: {error_msg}")
+
+
+
+
+    def debit_sale(self, debit_data):
+        created_by = debit_data.get("owner") or "system"
+        name = (debit_data.get("name") or "") + str(random.randint(1000, 9999))
+
+        get_original_rcpt_no = debit_data.get("return_against")
+
+        if not get_original_rcpt_no:
+            frappe.throw("Sale cancellation failed: 'name' field is required in credit_data.")
+
+        try:
+            response = requests.get(
+                "http://0.0.0.0:7000/api/get-rcpt-no/",
+                params={"docname": get_original_rcpt_no}
+            )
+            response.raise_for_status()
+            data = response.json()
+            orgInvcNo = data.get("custom_rcpt_no")
+            if not orgInvcNo:
+                frappe.throw("Sale cancellation failed: 'custom_rcpt_no' not found in API response.")
+        except requests.RequestException as e:
+            frappe.throw(f"Sale cancellation failed: Request error - {str(e)}")
+        except Exception as e:
+            frappe.throw(f"Sale cancellation failed: {str(e)}")
+
+        current_dt_full = datetime.now().strftime("%Y%m%d%H%M%S")
+
+        total_taxable_amt = 0.0
+        total_vat_amt = 0.0
+        total_excise_taxable_amt = 0.0
+        total_excise_tax_amt = 0.0
+        total_tot_amt = 0.0
+
+        item_list = []
+        for idx, item in enumerate(debit_data.get("items", []), start=1):
+            qty = item.get("qty", 1)
+            price = item.get("price", 0)
+            dcAmt = item.get("dcAmt", 0)
+            isrccAmt = item.get("isrcAmt", 0)
+            exciseTaxblAmt = item.get("exciseTaxblAmt", 0)
+            exciseTxAmt = item.get("exciseTxAmt", 0)
+
+            vat_rate = item.get("vatRate", 16)
+            splyAmt = round(qty * price, 3)
+
+            vatTaxblAmt = round(item.get("vatTaxblAmt", splyAmt), 3)
+            vatAmt = round(item.get("vatAmt", vatTaxblAmt * vat_rate / 100), 3)
+
+            totAmt = round(splyAmt + vatAmt + exciseTxAmt - dcAmt - isrccAmt, 3)
+
+            total_taxable_amt += vatTaxblAmt
+            total_vat_amt += vatAmt
+            total_excise_taxable_amt += exciseTaxblAmt
+            total_excise_tax_amt += exciseTxAmt
+            total_tot_amt += totAmt
+
+            item_list.append({
+                "itemSeq": idx,
+                "itemCd": item.get("item_code", ""),
+                "itemClsCd": item.get("itemClsCd", "A"),
+                "itemNm": item.get("item_name", ""),
+                "bcd": item.get("barcode", ""),
+                "pkgUnitCd": item.get("pkgUnitCd", "P/KG"),
+                "pkg": item.get("pkg", 0),
+                "qtyUnitCd": item.get("qtyUnitCd", "U"),
+                "qty": qty,
+                "prc": price,
+                "splyAmt": splyAmt,
+                "dcRt": item.get("dcRt", 0),
+                "dcAmt": dcAmt,
+                "isrccCd": item.get("isrccCd", ""),
+                "isrccNm": item.get("isrccNm", ""),
+                "isrcRt": item.get("isrcRt", 0),
+                "isrcAmt": isrccAmt,
+                "vatCatCd": item.get("vatCatCd", "A"),
+                "exciseTxCatCd": item.get("exciseTxCatCd", ""),
+                "vatTaxblAmt": vatTaxblAmt,
+                "exciseTaxblAmt": exciseTaxblAmt,
+                "vatAmt": vatAmt,
+                "exciseTxAmt": exciseTxAmt,
+                "totAmt": totAmt
+            })
+
+        payload = {
+            "tpin": self.get_tpin(),
+            "bhfId": self.get_branch(),
+            "orgInvcNo": orgInvcNo,
+            "cisInvcNo":  name,
+            "custTpin": "1000724543",
+            "custNm": "Customer Name\n1",
+            "salesTyCd": "N",
+            "rcptTyCd": "D",
+            "pmtTyCd": "01",
+            "salesSttsCd": "02",
+            "cfmDt": current_dt_full,
+            "salesDt": current_dt_full[:8],
+            "stockRlsDt": current_dt_full,
+            "cnclReqDt": current_dt_full,
+            "cnclDt": current_dt_full,
+            "rfdDt": current_dt_full,
+            "totItemCnt": len(item_list),
+            "taxblAmtA": round(total_taxable_amt, 3),
+            "taxAmtA": round(total_vat_amt, 3),
+            "totTaxblAmt": round(total_taxable_amt, 3),
+            "totTaxAmt": round(total_vat_amt, 3),
+            "totAmt": round(total_tot_amt, 3),
+            "cashDcRt": 0,
+            "cashDcAmt": 0,
+            "taxRtA": 16,
+            "taxRtRvat": 16,
+            "taxRtF": 10,
+            "taxRtIpl1": 5,
+            "taxRtTl": 1.5,
+            "taxRtEcm": 5,
+            "taxRtExeeg": 3,
+            "taxRtTot": 0,
+            "taxAmtTot": 0,
+            "prchrAcptcYn": "N",
+            "remark": "",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by,
+            "saleCtyCd": "1",
+            "currencyTyCd": "ZMW",
+            "exchangeRt": "1",
+            "destnCountryCd": "",
+            "dbtRsnCd": "03",
+            "invcAdjustReason": "Omitted Item",
+            "itemList": item_list
+        }
+
+        res = self.call_debit_sale_client(payload)
+        print("📦 Debit sale client response:", res)
+
+        if not res:
+            frappe.throw("Debit sale failed: No response from client.")
+
+        if res.get("resultCd") != "000":
+            frappe.throw(f"Debit sale failed: resultCd not 000, got {res.get('resultCd')}, response: {res}")
+
+        data = res.get("data")
+        if not data:
+            frappe.throw(f"Debit sale failed: 'data' missing in client response. Response: {res}")
+
+        get_rcpt_no = data.get("rcptNo")
+        if not get_rcpt_no:
+            frappe.throw(f"Debit sale failed: 'rcptNo' missing in client response data. Response: {res}")
+
+        # Proceed normally if here
+        print("✅ Stock master updated successfully after sale.")
+        doc_name = debit_data.get("name")
+        self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
+
+    
 
 
 

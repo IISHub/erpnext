@@ -149,24 +149,31 @@ class Customer(TransactionBase):
 
 
 	def before_insert(self):
-		# Convert to dictionary for logging
 		customer_data = self.as_dict()
+		print(customer_data)
 		frappe.logger().info("Creating customer with data: {}".format(customer_data))
 
-		# Extract fields safely
 		tpin = customer_data.get("custom_tpin")
 		customer_name = self.get("customer_name") or ""
 		email_id = self.get("email_id") or ""
 		mobile_no = self.get("mobile_no") or ""
-		created_by = self.get("owner") or frappe.session.user
-
-		print('Customer data: ', tpin, customer_name, email_id, mobile_no, created_by)
+		created_by = customer_data.get("modified_by")
 
 		# Validate TPIN
 		if not tpin:
 			frappe.throw(_("Customer TPIN ({0}) is required.").format(frappe.bold("custom_tpin")))
 
-		# Prevent duplicates
+		if len(tpin) < 10:
+			frappe.throw(_("Invalid TPIN: must be at least 10 characters long."))
+
+		# Validate mobile number
+		if not mobile_no:
+			frappe.throw(_("Customer mobile number is required."))
+
+		if len(mobile_no) < 10:
+			frappe.throw(_("Invalid Mobile Number: must be at least 10 digits."))
+
+		# Check for duplicate TPIN
 		if frappe.db.exists("Customer", {"custom_tpin": tpin}):
 			frappe.throw(_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin)))
 

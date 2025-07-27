@@ -23,5 +23,8 @@ class zraItem(ZRAClient):
     def create_item(self, item_data):
         
         return item_data
+    
+    def update_item(self):
+        return 
 
    

@@ -5,6 +5,7 @@ import copy
 import json
 import random
 import requests
+from erpnext.zra_client.imports.main import Imports
 import frappe
 from urllib.parse import quote
 from frappe import _, bold
@@ -37,7 +38,7 @@ from erpnext.controllers.item_variant import (
 from erpnext.stock.doctype.item_default.item_default import ItemDefault
 from erpnext.stock.utils import get_valuation_method
 from erpnext.zra_client.item.main import zraItem
-
+from erpnext.zra_client.main import ZRAClient
 class DuplicateReorderRows(frappe.ValidationError):
 	pass
 
@@ -177,6 +178,8 @@ class Item(Document):
 
 
 	def before_insert(self):
+		
+
 		item_data = self.as_dict()
 		print("Incoming item_data:", json.dumps(item_data, indent=2))
 
@@ -259,11 +262,14 @@ class Item(Document):
 
 		# Generate unique item_code
 		for _ in range(5):
-			rand_num = random.randint(1, 9999999)
-			formatted = f"{rand_num:07d}"
-			item_code = f"{country_code}{itemTyCd}{packaging_unit_code}{qtyUnitCd}{formatted}"
-			if not frappe.db.exists("Item", {"item_code": item_code}):
-				break
+			try:
+				rand_num = int(random.randint(1, 9999999))  # Ensure it's an int
+				formatted = f"{rand_num:07d}"  # Format as zero-padded string
+				item_code = f"{country_code}{itemTyCd}{packaging_unit_code}{qtyUnitCd}{formatted}"
+				if not frappe.db.exists("Item", {"item_code": item_code}):
+					break
+			except Exception as e:
+				frappe.throw(f"Random code generation failed: {e}")
 		else:
 			frappe.throw("Failed to generate a unique item code after 5 attempts.")
 
@@ -273,9 +279,32 @@ class Item(Document):
 		self.item_code = item_code
 		self.name = item_code
 
-		# Create payload for external API
+		opening_stock = item_data.get("opening_stock")
+
+		raw_opening_stock = item_data.get("opening_stock")
+
+		try:
+			if raw_opening_stock is None or raw_opening_stock == "":
+				opening_stock = 0.0 
+			else:
+				opening_stock = float(raw_opening_stock)
+		except (TypeError, ValueError):
+			frappe.throw("🚫 Invalid opening_stock value. Must be a number (integer or float).")
+
+
+
+
+		try:
+			default_price = float(item_data.get("standard_rate") or 0)
+		except ValueError:
+			frappe.throw("Invalid standard_rate value. Must be a number.")
+
+
+
 		created_by = item_data.get("owner", "System")
-		default_price = float(item_data.get("standard_rate", 0))
+		print("DEBUG default_price type:", type(default_price))
+		print("DEBUG opening_stock type:", type(opening_stock))
+
 
 		payload = {
 			"tpin": "2484778002",
@@ -300,7 +329,7 @@ class Item(Document):
 			"svcChargeYn": "Y",
 			"rentalYn": "N",
 			"addInfo": None,
-			"sftyQty": item_data.get("opening_stock", 0),
+			"sftyQty": opening_stock,
 			"isrcAplcbYn": "N",
 			"useYn": "Y",
 			"regrNm": created_by,
@@ -310,8 +339,11 @@ class Item(Document):
 		}
 
 		print("Payload being sent:", json.dumps(payload, indent=2))
+
+		# Call external helper
 		item_obj = zraItem()
 		item_obj.create_item_helper(payload)
+
 
 
 
@@ -325,7 +357,22 @@ class Item(Document):
 			self.set_opening_stock()
 
 	def validate(self):
+		# print("****validating")
+		data = self.as_dict()
+		print("****validating")
+		data = self.as_dict()
+
+		if data.get("custom_task_cd") or data.get("custom_dcl__de"):
+			import_obj = Imports()
+			import_obj.update_import(data)
+		else:
+			zra_obj = ZRAClient()
+			print(data)
+			zra_obj.update_item(**data)
+			
+
 		if not self.item_name:
+
 			self.item_name = self.item_code
 
 		if not strip_html(cstr(self.description)).strip():
