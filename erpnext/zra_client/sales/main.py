@@ -476,16 +476,82 @@ class zraSales(ZRAClient):
         response = self.call_create_credit_note_sale_client(payload)
 
         if response.get("resultCd") == "000":
-                if response.get("data") and response["data"].get("rcptNo"):
-                    rcpt_no = response["data"]["rcptNo"]
-                    doc_name = credit_note_doc.get("name")
-                    self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
-                    frappe.msgprint(f"✅ Credit Note created successfully. Receipt No: {rcpt_no}")
-                else:
-                    frappe.msgprint("✅ Credit Note created successfully but no receipt number was returned")
+            if response.get("data") and response["data"].get("rcptNo"):
+                rcpt_no = response["data"]["rcptNo"]
+                doc_name = credit_note_doc.get("name")
+                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
+                frappe.msgprint(f"Credit Note created successfully. Receipt No: {rcpt_no}")
+            else:
+                frappe.msgprint("Credit Note created successfully but no receipt number was returned")
+                
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            update_stock_item = []
+            update_stock_master = []
+
+            toUseItem = item_list
+            for item in toUseItem:
+                update_stock_item.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"),
+                    "taxblAmt": item.get("vatTaxblAmt"),  
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": item.get("vatAmt"),         
+                    "totAmt": item.get("totAmt"),
+                    "pkg": 1,
+                    "totDcAmt": 0,
+                })
+                update_stock_master.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": 12 
+                })
+
+            update_stock_payload = {
+                "tpin": self.get_tpin(),
+                "bhfId": self.get_branch(),
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": "M",
+                "sarTyCd": "02",
+                "ocrnDt": ocrnDt,
+                "totItemCnt": payload["totItemCnt"],
+                "totTaxblAmt": payload["totTaxblAmt"],
+                "totTaxAmt": payload["totTaxAmt"],
+                "totAmt": payload["totAmt"],
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_item
+            }
+
+            response = call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            print("update stock response", response)
+            if response.get("resultCd") == "000":
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.branch_code,
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master
+                }
+
+                response = call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
+                print("update stock master response")
+                print(response)
+                
+            
         else:
             error_msg = response.get("resultMsg", "Unknown error occurred")
-            frappe.throw(f"❌ Failed to create Credit Note: {error_msg}")
+            frappe.throw(f"Failed to create Credit Note: {error_msg}")
 
 
 
