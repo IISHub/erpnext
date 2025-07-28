@@ -483,7 +483,7 @@ class zraSales(ZRAClient):
                 frappe.msgprint(f"Credit Note created successfully. Receipt No: {rcpt_no}")
             else:
                 frappe.msgprint("Credit Note created successfully but no receipt number was returned")
-                
+
             ocrnDt = datetime.now().strftime("%Y%m%d")
             update_stock_item = []
             update_stock_master = []
@@ -531,9 +531,9 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_item
             }
 
-            response = call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
             print("update stock response", response)
-            if response.get("resultCd") == "000":
+            if call_update_stock_after_purchase.get("resultCd") == "000":
                 update_stock_master_payload = {
                     "tpin": self.tpin,
                     "bhfId": self.branch_code,
@@ -544,9 +544,9 @@ class zraSales(ZRAClient):
                     "stockItemList": update_stock_master
                 }
 
-                response = call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
+                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
                 print("update stock master response")
-                print(response)
+                print(call_update_stock_master_after_purchase)
                 
             
         else:
@@ -687,28 +687,83 @@ class zraSales(ZRAClient):
             "itemList": item_list
         }
 
-        res = self.call_debit_sale_client(payload)
-        print("📦 Debit sale client response:", res)
+        response = self.call_debit_sale_client(payload)
+        if response.get("resultCd") == "000":
+            if response.get("data") and response["data"].get("rcptNo"):
+                rcpt_no = response["data"]["rcptNo"]
+                doc_name = debit_data.get("name")
+                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
+                frappe.msgprint(f"Credit Note created successfully. Receipt No: {rcpt_no}")
+            else:
+                frappe.msgprint("Credit Note created successfully but no receipt number was returned")
 
-        if not res:
-            frappe.throw("Debit sale failed: No response from client.")
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            update_stock_item = []
+            update_stock_master = []
 
-        if res.get("resultCd") != "000":
-            frappe.throw(f"Debit sale failed: resultCd not 000, got {res.get('resultCd')}, response: {res}")
+            toUseItem = item_list
+            for item in toUseItem:
+                update_stock_item.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"),
+                    "taxblAmt": item.get("vatTaxblAmt"),  
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": item.get("vatAmt"),         
+                    "totAmt": item.get("totAmt"),
+                    "pkg": 1,
+                    "totDcAmt": 0,
+                })
+                update_stock_master.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": 12 
+                })
 
-        data = res.get("data")
-        if not data:
-            frappe.throw(f"Debit sale failed: 'data' missing in client response. Response: {res}")
+            update_stock_payload = {
+                "tpin": self.get_tpin(),
+                "bhfId": self.get_branch(),
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": "M",
+                "sarTyCd": "02",
+                "ocrnDt": ocrnDt,
+                "totItemCnt": payload["totItemCnt"],
+                "totTaxblAmt": payload["totTaxblAmt"],
+                "totTaxAmt": payload["totTaxAmt"],
+                "totAmt": payload["totAmt"],
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_item
+            }
 
-        get_rcpt_no = data.get("rcptNo")
-        if not get_rcpt_no:
-            frappe.throw(f"Debit sale failed: 'rcptNo' missing in client response data. Response: {res}")
+            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            print("update stock response", response)
+            if call_update_stock_after_purchase.get("resultCd") == "000":
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.branch_code,
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master
+                }
 
-        # Proceed normally if here
-        print("✅ Stock master updated successfully after sale.")
-        doc_name = debit_data.get("name")
-        self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
+                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
+                print("update stock master response")
+                print(call_update_stock_master_after_purchase)
 
+        else:
+            error_msg = response.get("resultMsg", "Unknown error occurred")
+            frappe.throw(f"Failed to create Debit Note: {error_msg}")
     
 
 
