@@ -476,7 +476,7 @@ class SalesInvoice(SellingController):
 
 		elif is_debit_note == 1:
 			print("**** Calling debit sale ***")
-			sale_obj.debit_sale(sell_order)
+			sale_obj.create_debit_note_payload(sell_order)
 
 		elif is_return == 1:
 			print("**** Credit sale ****:", sell_order)
