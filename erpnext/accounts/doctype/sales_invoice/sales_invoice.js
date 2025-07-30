@@ -1147,10 +1147,20 @@ var select_loyalty_program = function (frm, loyalty_programs) {
 frappe.ui.form.on("Sales Invoice", {
     refresh: function(frm) {
         frm.trigger("toggle_lpo_fields");
+        frm.trigger("toggle_return_fields");
+        frm.trigger("toggle_return_is_debit_note");
     },
 
     custom__lpo_transaction: function(frm) {
         frm.trigger("toggle_lpo_fields");
+    },
+
+    is_return: function(frm) {
+        frm.trigger("toggle_return_fields");
+    },
+
+    is_debit_note: function(frm) {
+        frm.trigger("toggle_return_is_debit_note");
     },
 
     toggle_lpo_fields: function(frm) {
@@ -1158,9 +1168,20 @@ frappe.ui.form.on("Sales Invoice", {
 
         frm.toggle_display("custom_lpo_number", show);
         frm.set_df_property("custom_lpo_number", "reqd", show);
+    },
 
-        // Debug logs (use the exact field names)
-        console.log("custom__lpo_transaction:", frm.doc.custom__lpo_transaction);
-        console.log("Toggling custom_lpo_number visibility:", show);
+    toggle_return_fields: function(frm) {
+        const show = frm.doc.is_return === 1;
+
+        frm.toggle_display("custom_reason", show);
+        frm.set_df_property("custom_reason", "reqd", show);
+    },
+
+    toggle_return_is_debit_note: function(frm) {
+        const show = frm.doc.is_debit_note === 1;
+
+        frm.toggle_display("custom_reason", show);
+        frm.set_df_property("custom_reason", "reqd", show);
     }
 });
+

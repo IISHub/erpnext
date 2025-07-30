@@ -325,6 +325,22 @@ class zraSales(ZRAClient):
         created_by = credit_note_doc.get("owner") or "system"
         currency = credit_note_doc.get("currency") or "ZMW"
 
+        debit_type_map = {
+        "01": "Wrong product(s)",
+        "02": "Wrong price",
+        "03": "Damaged Goods",
+        "04": "Wrong Customer Invoiced",
+        "05": "Duplicated invoice",
+        "06": "Excess supplies",
+        "07": "Other (Provide other reason in brief)"
+        }
+
+        credit_type_reverse_map = {v: k for k, v in debit_type_map.items()}
+
+        custom_reason_text = credit_note_doc.get("custom_reason", "Other (Provide other reason in brief)")
+        custom_reason_code = credit_type_reverse_map.get(custom_reason_text, "07")
+
+
         totals = {
             'gross': 0.0,
             'discount': 0.0,
@@ -394,12 +410,12 @@ class zraSales(ZRAClient):
             "Customer": customer_name,
             "custTpin": customer_tpin,
             "salesTyCd": "N",
-            "rcptTyCd": "R",  # Credit note
+            "rcptTyCd": "R",  
             "pmtTyCd": "01",
             "salesSttsCd": "02",
             "cfmDt": now.strftime("%Y%m%d%H%M%S"),
             "salesDt": now.strftime("%Y%m%d"),
-            "rfdRsnCd": "01",  # Return of goods
+            "rfdRsnCd": custom_reason_text, 
             "totItemCnt": len(item_list),
             
             # Taxable amounts - only populate category A (16%) and zero others
@@ -594,6 +610,21 @@ class zraSales(ZRAClient):
         total_excise_tax_amt = 0.0
         total_tot_amt = 0.0
 
+        debit_type_map = {
+        "01": "Wrong product(s)",
+        "02": "Wrong price",
+        "03": "Damaged Goods",
+        "04": "Wrong Customer Invoiced",
+        "05": "Duplicated invoice",
+        "06": "Excess supplies",
+        "07": "Other (Provide other reason in brief)"
+    }
+
+        credit_type_reverse_map = {v: k for k, v in debit_type_map.items()}
+
+        custom_reason_text = debit_data.get("custom_reason", "Other (Provide other reason in brief)")
+        custom_reason_code = credit_type_reverse_map.get(custom_reason_text, "07")
+
         item_list = []
         for idx, item in enumerate(debit_data.get("items", []), start=1):
             qty = item.get("qty", 1)
@@ -688,10 +719,12 @@ class zraSales(ZRAClient):
             "currencyTyCd": "ZMW",
             "exchangeRt": "1",
             "destnCountryCd": "",
-            "dbtRsnCd": "03",
-            "invcAdjustReason": "Omitted Item",
+            "dbtRsnCd":  custom_reason_code,
+            "invcAdjustReason":  custom_reason_text,
             "itemList": item_list
         }
+
+        print(payload)
 
         response = self.call_debit_sale_client(payload)
         if response.get("resultCd") == "000":
@@ -851,9 +884,9 @@ class zraSales(ZRAClient):
             "cfmDt": now.strftime("%Y%m%d%H%M%S"),
             "salesDt": now.strftime("%Y%m%d"),
             "totItemCnt": len(item_list),
-            "taxblAmtA": 0.0,  # Not used for exports
+            "taxblAmtA": 0.0, 
             "taxblAmtB": 0.0,
-            "taxblAmtC1": totals['taxable'],  # Taxable amount for exports (0% VAT)
+            "taxblAmtC1": totals['taxable'], 
             "taxblAmtC2": 0.0,
             "taxblAmtC3": 0.0,
             "taxblAmtD": 0.0,
@@ -868,7 +901,7 @@ class zraSales(ZRAClient):
             "taxblAmtTot": 0.0,
             "taxRtA": 16,
             "taxRtB": 16,
-            "taxRtC1": 0,  # 0% VAT for exports
+            "taxRtC1": 0, 
             "taxRtC2": 0,
             "taxRtC3": 0,
             "taxRtD": 0,

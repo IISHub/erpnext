@@ -455,6 +455,9 @@ class SalesInvoice(SellingController):
 		is_export = sell_order.get("custom_export")
 		is_lop = sell_order.get("custom__lpo_transaction")
 		is_rvat = sell_order.get("custom_rvat")
+
+		print(sell_order)
+		# frappe.throw("This will always fail for testing LPO logic")
 		
 
 		if is_export:
@@ -464,7 +467,7 @@ class SalesInvoice(SellingController):
 		elif is_rvat:
 			print("calling rvat")
 			sale_obj.create_rvat_with_agent(sell_order)
-			frappe.throw("This will always fail for testing LPO logic")
+
 
 		elif is_lop == 1:
 			print("******** Creating LPO sale ********")
