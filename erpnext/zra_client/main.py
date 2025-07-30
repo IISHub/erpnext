@@ -8,6 +8,7 @@ import json
 
 
 ZRA_LOCAL_BASE_URL = "http://localhost:8080/sandboxvsdc1.0.8.0"
+ZRA_GET_PRINCIPAL = "/trnsSales/selectPrincipals"
 ZRA_CREATE_ITEM = "/items/saveItem"
 ZRA_SAVE_STOCK_URL = "/stock/saveStockItems"
 ZRA_UPDATE_ITEM = "/items/updateItem"
@@ -36,6 +37,7 @@ class ZRAClient:
         self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
         self.update_import_url = f"{self.base_url}{UPDATE_IMPORT}"
         self.save_item_composition_url = f"{self.base_url}{SAVE_ITEM_COMPOSITION}"
+        self.get_principal_url = f"{self.base_url}{ZRA_GET_PRINCIPAL}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
@@ -469,6 +471,8 @@ class ZRAClient:
         except requests.RequestException as e:
             raise Exception("Failed to save item composition")
     
+
+
     def create_export_sale_zra_client(self, payload):
         print("create export sale payload: ", payload)
         try:
@@ -477,9 +481,44 @@ class ZRAClient:
             result = response.json()
             print("Results for the response: ", result)
             return response
-        
+
+        except requests.HTTPError as http_err:
+            error_content = ""
+            if http_err.response is not None:
+                try:
+                    error_content = http_err.response.text
+                except Exception:
+                    error_content = "Could not read error response text."
+            
+            print("HTTP Error:", http_err)
+            print("Response content:", error_content)
+            raise Exception(f"Server Error\nException: Failed to save import sale\nResponse: {error_content}")
+
         except requests.RequestException as e:
-            raise Exception("Failed to save import sale")
+
+            print("Request Exception:", e)
+            raise Exception(f"Server Error\nException: Failed to save import sale\nDetails: {str(e)}")
+
+    def get_principals_zra_client(self, payload):
+        try:
+            response = requests.post(self.get_principal_url, json=payload)
+            content = response.text
+            print("Raw response content:", content)
+
+            response.raise_for_status()
+
+            result = response.json()
+            print("Parsed JSON result:", result)
+            return result
+
+        except requests.HTTPError as http_err:
+            print("HTTP Error:", http_err)
+            print("Response content:", response.text)
+            raise Exception(f"Server Error\nException: Failed to save RVAT Sale\nResponse: {response.text}")
+
+        except requests.RequestException as e:
+            print("Request Exception:", e)
+            raise Exception(f"Server Error\nException: Failed to save RVAT \nDetails: {str(e)}")
 
 
 

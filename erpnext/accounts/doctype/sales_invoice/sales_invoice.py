@@ -449,24 +449,38 @@ class SalesInvoice(SellingController):
 	def on_submit(self):
 		sell_order = self.as_dict()
 		sale_obj = zraSales()
+
 		is_return = sell_order.get("is_return")
 		is_debit_note = sell_order.get("is_debit_note")
 		is_export = sell_order.get("custom_export")
-		print("Check export: ", is_export)
-		print(sell_order)
-		frappe.throw(_("At least one mode of payment is required for POS invoice."))
+		is_lop = sell_order.get("custom__lpo_transaction")
+		is_rvat = sell_order.get("custom_rvat")
+		
 
 		if is_export:
 			print("Calling the export sale")
 			sale_obj.create_export_sale_invoice(sell_order)
+
+		elif is_rvat:
+			print("calling rvat")
+			sale_obj.create_rvat_with_agent(sell_order)
+			frappe.throw("This will always fail for testing LPO logic")
+
+		elif is_lop == 1:
+			print("******** Creating LPO sale ********")
+			sale_obj.create_lop_sale(sell_order)
+
+
 		elif is_debit_note == 1:
-			print("**** calling debit sale ***")
+			print("**** Calling debit sale ***")
 			sale_obj.debit_sale(sell_order)
+
 		elif is_return == 1:
-			print("**** credit sale****:", sell_order)
+			print("**** Credit sale ****:", sell_order)
 			sale_obj.create_credit_note_payload(sell_order)
+
 		else:
-			print("**** normal sale****:", sell_order)
+			print("**** Normal sale ****:", sell_order)
 			sale_obj.create_sale_normal(sell_order)
 
 		self.validate_pos_paid_amount()

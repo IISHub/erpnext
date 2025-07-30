@@ -10,9 +10,11 @@ from datetime import datetime
 import frappe
 from frappe import get_doc
 from erpnext.zra_client.main import ZRAClient
+from erpnext.zra_client.principals.main import Principals
 
 now = datetime.now()
 
+principals_obj = Principals()
 class zraSales(ZRAClient):
     def __init__(self):
         super().__init__()
@@ -43,6 +45,9 @@ class zraSales(ZRAClient):
         return self.sale_debit_note(payload)
     
     def call_export_sale_client(self, payload):
+        return self.create_export_sale_zra_client(payload)
+
+    def call_lpo_sale_client(self, payload):
         return self.create_export_sale_zra_client(payload)
 
     def update_rcptNo_delayed(self, docname, rcpt_no, delay=10):
@@ -913,6 +918,117 @@ class zraSales(ZRAClient):
         }
 
         self.call_export_sale_client(payload)
+
+    def create_lop_sale(self, lpo_data):
+        cnclReqDt = datetime.now().strftime("%Y%m%d%H%M%S")
+        cfmDt = datetime.now().strftime("%Y%m%d%I%M%S")
+        salesDt = datetime.now().strftime("%Y%m%d")
+        payload = {
+            "tpin": self.get_tpin(),
+            "bhfId": self.get_branch(),
+            "orgInvcNo": 0,
+            "cisInvcNo": "CIS001-22",
+            "custTpin": "2000000000",
+            "custNm": "LPO CUSTOMER",
+            "salesTyCd": "N",
+            "rcptTyCd": "S",
+            "pmtTyCd": "01",
+            "salesSttsCd": "02",
+            "cfmDt": cfmDt,
+            "salesDt": salesDt,
+            "totItemCnt": 1,
+            "taxblAmtA": 0.0,
+            "taxblAmtB": 0.0,
+            "taxblAmtC1": 0.0,
+            "taxblAmtC2": 86.2069,
+            "taxblAmtC3": 0.0,
+            "taxblAmtD": 0.0,
+            "taxblAmtRvat": 0.0,
+            "taxblAmtE": 0.0,
+            "taxblAmtF": 0.0,
+            "taxblAmtIpl1": 0,
+            "taxblAmtIpl2": 0,
+            "taxblAmtTl": 0,
+            "taxblAmtEcm": 0,
+            "taxblAmtExeeg": 0.0,
+            "taxblAmtTot": 0.0,
+            "taxRtA": 16,
+            "taxRtB": 16,
+            "taxRtC1": 0,
+            "taxRtC2": 0,
+            "taxRtC3": 0,
+            "taxRtD": 0,
+            "tlAmt": 0.0,
+            "taxRtRvat": 16,
+            "taxRtE": 0,
+            "taxRtF": 10,
+            "taxRtIpl1": 5,
+            "taxRtIpl2": 0,
+            "taxRtTl": 1.5,
+            "taxRtEcm": 5,
+            "taxRtExeeg": 3,
+            "taxRtTot": 0,
+            "taxAmtA": 0.0,
+            "taxAmtB": 0.0,
+            "taxAmtC1": 0.0,
+            "taxAmtC2": 0.0,
+            "taxAmtC3": 0.0,
+            "taxAmtD": 0.0,
+            "taxAmtRvat": 0.0,
+            "taxAmtE": 0.0,
+            "taxAmtF": 0.0,
+            "taxAmtIpl1": 0.0,
+            "taxAmtIpl2": 0.0,
+            "taxAmtTl": 0.0,
+            "taxAmtEcm": 0.0,
+            "taxAmtExeeg": 0.0,
+            "taxAmtTot": 0.0,
+            "totTaxblAmt": 86.2069,
+            "totTaxAmt": 0,
+            "cashDcRt": 0,
+            "cashDcAmt": 0,
+            "totAmt": 86.2069,
+            "prchrAcptcYn": "N",
+            "remark": "",
+            "regrId": "admin",
+            "regrNm": "admin",
+            "modrId": "admin",
+            "modrNm": "admin",
+            "saleCtyCd": "1",
+            "lpoNumber": "109506957",
+            "currencyTyCd": "ZMW",
+            "exchangeRt": "1",
+            "destnCountryCd": "",
+            "dbtRsnCd": "",
+            "invcAdjustReason": "",
+            "itemList": [
+                {
+                "itemSeq": 1,
+                "itemCd": "20056",
+                "itemClsCd": "50102518",
+                "itemNm": "Item One",
+                "bcd": "",
+                "pkgUnitCd": "BA",
+                "pkg": 0.0,
+                "qtyUnitCd": "BE",
+                "qty": 1.0,
+                "prc": 86.2069,
+                "splyAmt": 86.2069,
+                "dcRt": 0,
+                "dcAmt": 0.0,
+                "vatCatCd": "C2",
+                "vatTaxblAmt": 86.2069,
+                "vatAmt": 0,
+                "totAmt": 86.2069
+                }
+            ]
+            }
+        self.call_lpo_sale_client(payload)
+
+    def create_rvat_with_agent(self, sell_data):
+        response = principals_obj.get_principal()
+        print(response)
+        
 
 
 
