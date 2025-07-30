@@ -42,6 +42,8 @@ class zraSales(ZRAClient):
     def call_debit_sale_client(self, payload):
         return self.sale_debit_note(payload)
     
+    def call_export_sale_client(self, payload):
+        return self.create_export_sale_zra_client(payload)
 
     def update_rcptNo_delayed(self, docname, rcpt_no, delay=10):
         def worker():
@@ -58,12 +60,12 @@ class zraSales(ZRAClient):
                 response = requests.post(url, json=payload, headers=headers)
 
                 if response.status_code == 200:
-                    print(f"✅ rcptNo '{rcpt_no}' updated for {docname} via API")
+                    print(f"rcptNo '{rcpt_no}' updated for {docname} via API")
                 else:
-                    print(f"❌ Failed to update rcptNo via API: {response.text}")
+                    print(f"Failed to update rcptNo via API: {response.text}")
 
             except Exception as e:
-                print(f"❌ Error calling API to update rcptNo: {e}")
+                print(f" Error calling API to update rcptNo: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -213,12 +215,12 @@ class zraSales(ZRAClient):
             "itemList": item_list
         }
         toUseData = payload
-        print("📦 Preparing sale data:", payload)
+        print(" Preparing sale data:", payload)
         response = self.call_create_normal_sale_client(payload)
 
         if response.get("resultCd") == "000":
             get_rcpt_no = response.get("data", {}).get("rcptNo")
-            print("✅ Stock master updated successfully after sale.")
+            print(" Stock master updated successfully after sale.")
             doc_name = sell_order.get("name")
             self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
 
@@ -275,7 +277,7 @@ class zraSales(ZRAClient):
 
             response = call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
             if response.get("resultCd") == "000":
-                print("✅ Stock updated successfully after sale.")
+                print("Stock updated successfully after sale.")
 
                 create_update_stock_master_payload = {
                                 "tpin": self.tpin,
@@ -288,12 +290,12 @@ class zraSales(ZRAClient):
 
                                 }
 
-                print("📦 Preparing stock master update data:", create_update_stock_master_payload)
+                print(" Preparing stock master update data:", create_update_stock_master_payload)
                 response = call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
          
-            frappe.msgprint(f"✅ Sale made successfully: {response.get('resultMsg')}")
+            frappe.msgprint(f" Sale made successfully: {response.get('resultMsg')}")
         else:
-            frappe.throw(f"❌ Purchase save failed: {response.get('resultMsg')}")
+            frappe.throw(f"Purchase save failed: {response.get('resultMsg')}")
 
 
 
@@ -559,11 +561,10 @@ class zraSales(ZRAClient):
     def debit_sale(self, debit_data):
         created_by = debit_data.get("owner") or "system"
         name = (debit_data.get("name") or "") + str(random.randint(1000, 9999))
-
         get_original_rcpt_no = debit_data.get("return_against")
 
         if not get_original_rcpt_no:
-            frappe.throw("Sale cancellation failed: 'name' field is required in credit_data.")
+            frappe.throw("Sale cancellation failed: 'name' field is required in credit note.")
 
         try:
             response = requests.get(
@@ -765,7 +766,153 @@ class zraSales(ZRAClient):
             error_msg = response.get("resultMsg", "Unknown error occurred")
             frappe.throw(f"Failed to create Debit Note: {error_msg}")
     
+    def create_export_sale_invoice(self, import_data):
+        print("Creating import sale:", import_data)
+        customer_name = import_data.get("customer") or import_data.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name)
+        customer_tpin = customer_doc.get("custom_customer_tpin")
+        cisInvcNo = f'CIS{import_data.get("name", "001")}-{random.randint(1000, 9999)}'
+        created_by = import_data.get("owner") or "system"
+        currency = import_data.get("currency") or "ZMW"
+        totals = {'taxable': 0.0, 'vat': 0.0, 'discount': 0.0, 'gross': 0.0, 'net': 0.0}
+        item_list = []
 
+        for i, item in enumerate(import_data.get("items", []), 1):
+            item_code = item.get("item_code")
+            item_doc = frappe.get_doc("Item", item_code)
+            qty = flt(item.get("qty", 1))
+            price = flt(item_doc.get("standard_rate", 0))
+            gross = flt(qty * price, 4)
+            bins = frappe.db.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
+            available_qty = sum(flt(b.get("actual_qty", 0)) for b in bins)
+
+            discount_pct = flt(item.get("discount_percentage", 0))
+            discount_amt = flt(gross * discount_pct / 100, 4)
+            net = flt(gross - discount_amt, 4)
+            taxable = flt(net, 4)  # For exports, taxable amount is full net (0% VAT)
+            vat = 0.0  # VAT is 0% for exports
+
+            totals['gross'] += gross
+            totals['discount'] += discount_amt
+            totals['net'] += net
+            totals['taxable'] += taxable
+            totals['vat'] += vat
+
+            item_list.append({
+                "itemSeq": i,
+                "itemCd": item_code,
+                "itemClsCd": "50102518",
+                "itemNm": item.get("item_name"),
+                "bcd": item_doc.get("custom_origin_place_code", ""),
+                "pkgUnitCd": "WRAP",
+                "pkg": 1,
+                "qtyUnitCd": "EA",
+                "qty": qty,
+                "prc": flt(price, 4),
+                "splyAmt": gross,
+                "dcRt": discount_pct,
+                "dcAmt": discount_amt,
+                "vatCatCd": "C1",  # Changed from "A" to "C1" (Exports)
+                "vatTaxblAmt": taxable,
+                "vatAmt": vat,
+                "totAmt": flt(taxable + vat, 4),
+                "exciseTxCatCd": "",
+                "tlCatCd": "",
+                "iplCatCd": "",
+                "exciseTaxblAmt": 0.0,
+                "tlTaxblAmt": 0.0,
+                "iplTaxblAmt": 0.0,
+                "iplAmt": 0.0,
+                "tlAmt": 0.0,
+                "exciseTxAmt": 0.0
+            })
+
+        cash_discount_rate = flt(25.0, 4)
+        cash_discount_amt = flt(totals['net'] * cash_discount_rate / 100, 4)
+        final_amount = flt(totals['net'] - cash_discount_amt, 4)
+
+        payload = {
+            "tpin": self.tpin,
+            "bhfId": self.branch_code,
+            "orgSdcId": "SDC0010002709",
+            "cisInvcNo": cisInvcNo,
+            "orgInvcNo": 0,
+            "custTpin": customer_tpin,
+            "custNm": customer_name,
+            "salesTyCd": "N",
+            "rcptTyCd": "S",
+            "pmtTyCd": "01",
+            "salesSttsCd": "02",
+            "cfmDt": now.strftime("%Y%m%d%H%M%S"),
+            "salesDt": now.strftime("%Y%m%d"),
+            "totItemCnt": len(item_list),
+            "taxblAmtA": 0.0,  # Not used for exports
+            "taxblAmtB": 0.0,
+            "taxblAmtC1": totals['taxable'],  # Taxable amount for exports (0% VAT)
+            "taxblAmtC2": 0.0,
+            "taxblAmtC3": 0.0,
+            "taxblAmtD": 0.0,
+            "taxblAmtRvat": 0.0,
+            "taxblAmtE": 0.0,
+            "taxblAmtF": 0.0,
+            "taxblAmtIpl1": 0.0,
+            "taxblAmtIpl2": 0.0,
+            "taxblAmtTl": 0.0,
+            "taxblAmtEcm": 0.0,
+            "taxblAmtExeeg": 0.0,
+            "taxblAmtTot": 0.0,
+            "taxRtA": 16,
+            "taxRtB": 16,
+            "taxRtC1": 0,  # 0% VAT for exports
+            "taxRtC2": 0,
+            "taxRtC3": 0,
+            "taxRtD": 0,
+            "tlAmt": 0.0,
+            "taxRtRvat": 16,
+            "taxRtE": 0,
+            "taxRtF": 10,
+            "taxRtIpl1": 5,
+            "taxRtIpl2": 0,
+            "taxRtTl": 1.5,
+            "taxRtEcm": 5,
+            "taxRtExeeg": 3,
+            "taxRtTot": 0,
+            "taxAmtA": 0.0,  # No VAT for exports
+            "taxAmtB": 0.0,
+            "taxAmtC1": 0.0,  # VAT is 0 for exports
+            "taxAmtC2": 0.0,
+            "taxAmtC3": 0.0,
+            "taxAmtD": 0.0,
+            "taxAmtRvat": 0.0,
+            "taxAmtE": 0.0,
+            "taxAmtF": 0.0,
+            "taxAmtIpl1": 0.0,
+            "taxAmtIpl2": 0.0,
+            "taxAmtTl": 0.0,
+            "taxAmtEcm": 0.0,
+            "taxAmtExeeg": 0.0,
+            "taxAmtTot": 0.0,
+            "totTaxblAmt": totals['taxable'],
+            "totTaxAmt": 0.0,  
+            "totAmt": final_amount,
+            "cashDcRt": cash_discount_rate,
+            "cashDcAmt": cash_discount_amt,
+            "prchrAcptcYn": "N",
+            "remark": "",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by,
+            "saleCtyCd": "1",
+            "currencyTyCd": currency,
+            "exchangeRt": "1",
+            "destnCountryCd": "ZM", 
+            "dbtRsnCd": "",
+            "invcAdjustReason": "",
+            "itemList": item_list
+        }
+
+        self.call_export_sale_client(payload)
 
 
 

@@ -156,7 +156,7 @@ class Stock(ZRAClient):
                 frappe.throw(f"ZRA returned error: {response.get('resultMsg') if isinstance(response, dict) else response}")
 
         except Exception as e:
-            frappe.log_error(title="❌ ZRA Save Stock Failed", message=str(e))
+            frappe.log_error(title="ZRA Save Stock Failed", message=str(e))
             frappe.throw(f"ZRA Error: {e}")
 
     def update_stock_master(self, update_stock_master_payload):
@@ -165,6 +165,6 @@ class Stock(ZRAClient):
             save_stock_master = self.save_stock_master(update_stock_master_payload)
             return save_stock_master
         except Exception as e:
-            frappe.log_error(title="❌ Failed to update stock master", message=str(e))
+            frappe.log_error(title=" Failed to update stock master", message=str(e))
             print(f"Exception in update_stock_master: {e}")
             return None

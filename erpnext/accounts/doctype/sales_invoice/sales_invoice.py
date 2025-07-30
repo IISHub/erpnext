@@ -451,18 +451,22 @@ class SalesInvoice(SellingController):
 		sale_obj = zraSales()
 		is_return = sell_order.get("is_return")
 		is_debit_note = sell_order.get("is_debit_note")
+		is_export = sell_order.get("custom_export")
+		print("Check export: ", is_export)
+		print(sell_order)
+		frappe.throw(_("At least one mode of payment is required for POS invoice."))
 
-
-
-		if is_debit_note  == 1:
+		if is_export:
+			print("Calling the export sale")
+			sale_obj.create_export_sale_invoice(sell_order)
+		elif is_debit_note == 1:
+			print("**** calling debit sale ***")
 			sale_obj.debit_sale(sell_order)
-
 		elif is_return == 1:
-			print("**** credit sale****:",sell_order)
+			print("**** credit sale****:", sell_order)
 			sale_obj.create_credit_note_payload(sell_order)
-
 		else:
-			print("**** nornal sale****:",sell_order)
+			print("**** normal sale****:", sell_order)
 			sale_obj.create_sale_normal(sell_order)
 
 		self.validate_pos_paid_amount()

@@ -29,7 +29,7 @@ class zraPurchase(ZRAClient):
 
 
     def create_purchase(self, purchase_data):
-        print("📦 Creating purchase with data:", purchase_data)
+        print("Creating purchase with data:", purchase_data)
        
         payload = {
             "tpin": self.get_tpin_number(),
@@ -56,13 +56,13 @@ class zraPurchase(ZRAClient):
             "itemList": []
         }
         toUseData = payload
-        print("📦 Preparing purchase data:", toUseData)
+        print("Preparing purchase data:", toUseData)
        
 
 
         for idx, item in enumerate(purchase_data.get("items", [])):
-            print(f"\n📄 Processing item #{idx + 1}")
-            print("🔍 Full item data:", item) 
+            print(f"\nProcessing item #{idx + 1}")
+            print("Full item data:", item) 
             item_code = item.get("item_code")
             item_name = item.get("item_name")
 
@@ -75,7 +75,7 @@ class zraPurchase(ZRAClient):
             packaging_unit_code = r.json().get("code")
 
             get_qty_unit = item_doc.custom_units_of_measure or "PCS"
-            print("📦 Packaging unit code:", get_qty_unit)
+            print("Packaging unit code:", get_qty_unit)
             r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{get_qty_unit}/", timeout=5)
             r.raise_for_status()
             qty_unit_code = r.json().get("code")
@@ -118,7 +118,7 @@ class zraPurchase(ZRAClient):
         response_data = self.save_purchase_manually(payload)
 
         if response_data.get("resultCd") == "000":
-            frappe.msgprint(f"✅ Purchase saved successfully: {response_data.get('resultMsg')}")
+            frappe.msgprint(f"Purchase saved successfully: {response_data.get('resultMsg')}")
 
             ocrnDt = datetime.now().strftime("%Y%m%d")
 
@@ -184,7 +184,7 @@ class zraPurchase(ZRAClient):
                 "itemList":update_stock_items
                     
             }
-            print("📦 Preparing stock update data:", create_update_stock_payload)
+            print("Preparing stock update data:", create_update_stock_payload)
 
             call_update_stock_after_purchase = self.update_stock_after_purchase(create_update_stock_payload)
             print("📦 Preparing stock master item data:", update_stock_items)
@@ -198,11 +198,11 @@ class zraPurchase(ZRAClient):
                             "stockItemList":update_stock_master_items 
 
                             }
-            print("📦 Preparing stock master update data:", create_update_stock_master_payload)
+            print("Preparing stock master update data:", create_update_stock_master_payload)
             call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(create_update_stock_master_payload)
      
 
         if response_data.get("resultCd") != "000":
-            frappe.throw(f"❌ Purchase save failed: {response_data.get('resultMsg')}")
+            frappe.throw(f" Purchase save failed: {response_data.get('resultMsg')}")
 
         purchase_data["purchase_payload"] = frappe.as_json(payload)

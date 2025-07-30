@@ -16,6 +16,7 @@ ZRA_SAVE_PURCHASE = "/trnsPurchase/savePurchase"
 ZRA_CREATE_CUSTOMER = "/branches/saveBrancheCustomers"
 ZRA_SALE = "/trnsSales/saveSales"
 UPDATE_IMPORT = "/imports/updateImportItems"
+SAVE_ITEM_COMPOSITION = "/items/saveItemComposition"
 INTERNAL_URL = "http://0.0.0.0:7000/"
 
 BRANCH_CODE = "000"
@@ -34,6 +35,7 @@ class ZRAClient:
         self.sale_url = f"{self.base_url}{ZRA_SALE}"
         self.create_customer_url = f"{self.base_url}{ZRA_CREATE_CUSTOMER}"
         self.update_import_url = f"{self.base_url}{UPDATE_IMPORT}"
+        self.save_item_composition_url = f"{self.base_url}{SAVE_ITEM_COMPOSITION}"
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
@@ -324,7 +326,7 @@ class ZRAClient:
         except requests.RequestException as e:
             error_msg = f"Request failed for stock master: {str(e)}"
             frappe.log_error(
-                title="❌ Failed to save stock master",
+                title="Failed to save stock master",
                 message=f"{error_msg}\nPayload: {payload}"
             )
             raise Exception(error_msg)
@@ -332,7 +334,7 @@ class ZRAClient:
         except ValueError as e:
             error_msg = f"Invalid response for stock master: {str(e)}"
             frappe.log_error(
-                title="❌ Stock Master Response Error",
+                title="Stock Master Response Error",
                 message=error_msg
             )
             raise Exception(error_msg)
@@ -348,8 +350,8 @@ class ZRAClient:
             return data
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to save purchase", message=str(e))
-            raise Exception(f"❌ Failed to save purchase: {e}")
+            frappe.log_error(title="Failed to save purchase", message=str(e))
+            raise Exception(f"Failed to save purchase: {e}")
 
 
         
@@ -357,13 +359,13 @@ class ZRAClient:
         print("**** calling sale ***")
         try:
             response = requests.post(self.sale_url, json=payload)
-            print("🔄 Raw response object:", response)
-            print("📦 Response Status Code:", response.status_code)
+            print(" Raw response object:", response)
+
 
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    print("✅ ZRA Response JSON:", data)
+                    print("ZRA Response JSON:", data)
 
                     if data.get("resultCd") != "000":
                         raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
@@ -384,21 +386,21 @@ class ZRAClient:
                 raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to send normal sale", message=str(e))
-            raise Exception(f"❌ Network or connection error: {e}")
+            frappe.log_error(title="Failed to send normal sale", message=str(e))
+            raise Exception(f"Network or connection error: {e}")
         
 
     def credit_sale(self, payload):
         print("**** calling credit sale ***")
         try:
             response = requests.post(self.sale_url, json=payload)
-            print("🔄 Raw response object:", response)
-            print("📦 Response Status Code:", response.status_code)
+            print("Raw response object:", response)
+            print("Response Status Code:", response.status_code)
 
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    print("✅ ZRA Response JSON:", data)
+                    print("ZRA Response JSON:", data)
 
                     if data.get("resultCd") != "000":
                         raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
@@ -420,28 +422,28 @@ class ZRAClient:
                 raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to send credit sale", message=str(e))
-            raise Exception(f"❌ Network or connection error: {e}")
+            frappe.log_error(title="Failed to send credit sale", message=str(e))
+            raise Exception(f"Network or connection error: {e}")
         
         
         
     def sale_debit_note(self, payload):
         try:
             response = requests.post(self.sale_url, json=payload)
-            print("✅ Debit note response status:", response.status_code)
+            print("Debit note response status:", response.status_code)
 
             if response.headers.get('Content-Type', '').startswith('application/json'):
                 resp_json = response.json()
                 print("📦 Response content:", resp_json)
                 return resp_json
             else:
-                frappe.log_error(title="❌ Debit note response not JSON",
+                frappe.log_error(title="Debit note response not JSON",
                                 message=f"Content-Type: {response.headers.get('Content-Type')}")
                 return None
 
         except requests.RequestException as e:
-            frappe.log_error(title="❌ Failed to sale debit note", message=str(e))
-            raise Exception(f"❌ Failed to normal sale: {e}")
+            frappe.log_error(title="Failed to sale debit note", message=str(e))
+            raise Exception(f"Failed to normal sale: {e}")
 
     
     def zra_client_update_import(self, payload):
@@ -452,11 +454,32 @@ class ZRAClient:
         print(result)
 
         if result.get("resultCd") in ["000", "001"]:
-            print("✅ Import update successful.")
+            print("Import update successful.")
         else:
-            frappe.throw(_("🚫 ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
+            frappe.throw(_("ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
 
         return result
+    
+    def save_item_composition_zra_client(self, payload):
+        try:
+            response = requests.post(self.save_item_composition_url, payload)
+            response.raise_for_status()
+            results = 1
+
+        except requests.RequestException as e:
+            raise Exception("Failed to save item composition")
+    
+    def create_export_sale_zra_client(self, payload):
+        print("create export sale payload: ", payload)
+        try:
+            response = requests.post(self.sale_url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            print("Results for the response: ", result)
+            return response
+        
+        except requests.RequestException as e:
+            raise Exception("Failed to save import sale")
 
 
 

@@ -307,6 +307,9 @@ class BOM(WebsiteGenerator):
 		self.check_recursion()
 
 	def on_submit(self):
+		repackage_data = self.as_dict()
+		print(repackage_data)
+		raise Exception("This is a forced error that always fails.")
 		self.manage_default_bom()
 		self.update_bom_creator_status()
 

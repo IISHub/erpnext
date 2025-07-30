@@ -1143,3 +1143,24 @@ var select_loyalty_program = function (frm, loyalty_programs) {
 
 	dialog.show();
 };
+
+frappe.ui.form.on("Sales Invoice", {
+    refresh: function(frm) {
+        frm.trigger("toggle_lpo_fields");
+    },
+
+    custom__lpo_transaction: function(frm) {
+        frm.trigger("toggle_lpo_fields");
+    },
+
+    toggle_lpo_fields: function(frm) {
+        const show = frm.doc.custom__lpo_transaction === 1;
+
+        frm.toggle_display("custom_lpo_number", show);
+        frm.set_df_property("custom_lpo_number", "reqd", show);
+
+        // Debug logs (use the exact field names)
+        console.log("custom__lpo_transaction:", frm.doc.custom__lpo_transaction);
+        console.log("Toggling custom_lpo_number visibility:", show);
+    }
+});
