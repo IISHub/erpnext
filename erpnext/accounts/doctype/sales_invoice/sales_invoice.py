@@ -454,21 +454,25 @@ class SalesInvoice(SellingController):
 		is_debit_note = sell_order.get("is_debit_note")
 		is_export = sell_order.get("custom_export")
 		is_lop = sell_order.get("custom__lpo_transaction")
-		is_rvat = sell_order.get("custom_rvat")		
+		is_rvat = sell_order.get("custom_rvat")	
+
+		print(is_return, is_debit_note, is_export, is_lop, is_rvat)
+		print(sell_order)
+		
 
 		if is_export:
 			print("Calling the export sale")
+			print(sell_order)
 			sale_obj.create_export_sale_payload(sell_order)
 
 		elif is_rvat:
 			print("calling rvat")
-			sale_obj.create_rvat_with_agent(sell_order)
+			sale_obj.create_rvat_with_agent_sale(sell_order)
 
 
 		elif is_lop == 1:
 			print("******** Creating LPO sale ********")
-			# sale_obj.create_lop_sale(sell_order)
-
+			sale_obj.create_lpo_sale_transaction_payload(sell_order)
 
 		elif is_debit_note == 1:
 			print("**** Calling debit sale ***")

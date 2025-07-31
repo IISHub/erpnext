@@ -26,6 +26,9 @@ class zraSales(ZRAClient):
     def get_branch(self):
         return self.branch_code
 
+    def call_get_principal(self, payload):
+        return self.get_principals_zra_client(payload)
+
 
     def get_org_sdc_id(self):
         return self.org_sdc_id
@@ -49,7 +52,7 @@ class zraSales(ZRAClient):
         return self.create_export_sale_zra_client(payload)
 
     def call_lpo_sale_client(self, payload):
-        return self.create_export_sale_zra_client(payload)
+        return self.create_lpo_sale_zra_client(payload)
 
     def update_rcptNo_delayed(self, docname, rcpt_no, delay=10):
         def worker():
@@ -111,6 +114,7 @@ class zraSales(ZRAClient):
         for i, item in enumerate(sell_order.get("items", []), 1):
             item_code = item.get("item_code")
             item_doc = frappe.get_doc("Item", item_code)
+            packaging_unit = item_doc.get("custom_packaging_unit_code", "").strip()
             qty = flt(item.get("qty", 1))
             price = flt(item_doc.get("standard_rate", 0))
             gross = flt(qty * price, 4)
@@ -273,7 +277,7 @@ class zraSales(ZRAClient):
                 "bcd": country_code,
                 "pkgUnitCd": "WRAP",
                 "pkg": 1,
-                "qtyUnitCd": zra_qty_unit_code,
+                "qtyUnitCd": "U",
                 "qty": qty,
                 "prc": flt(price, 4),
                 "splyAmt": gross,
@@ -695,7 +699,7 @@ class zraSales(ZRAClient):
                 "bcd": country_code,
                 "pkgUnitCd": "WRAP",
                 "pkg": 1,
-                "qtyUnitCd": zra_qty_unit_code,
+                "qtyUnitCd": "U",
                 "qty": qty,
                 "prc": flt(price, 4),
                 "splyAmt": gross,
@@ -1112,7 +1116,7 @@ class zraSales(ZRAClient):
                 "bcd": country_code,
                 "pkgUnitCd": "WRAP",
                 "pkg": 1,
-                "qtyUnitCd": zra_qty_unit_code,
+                "qtyUnitCd": "U",
                 "qty": qty,
                 "prc": flt(price, 4),
                 "splyAmt": gross,
@@ -1332,13 +1336,13 @@ class zraSales(ZRAClient):
         
         # orgInvcNo should only be present for credit/debit notes. For a new export sale, it should be null or 0.
         # Assuming for a 'Save Sales Request - Exports' this is a new sale, not a linked one.
-        orgInvcNo = export_sale_data.get("original_invoice_number") or None # Set to None for new sales
+ 
 
         created_by = export_sale_data.get("owner") or "system"
         currency = export_sale_data.get("currency") or "ZMW"
         
         # Destination Country Code (Required for Exports)
-        destn_country = export_sale_data.get("shipping_country")
+        destn_country = export_sale_data.get("custom_destination_country")
         destnCountryCd = ""
         if destn_country:
             try:
@@ -1355,6 +1359,12 @@ class zraSales(ZRAClient):
                 frappe.throw(f"Error fetching country code for '{destn_country}' from external API: {e}")
         else:
             frappe.throw("Destination Country is required for Export Sales.")
+
+        # Special check: If destination country is ZM (Zambia's code, assuming your system recognizes it),
+        # then it's not a true export, even if custom_destination_country was set.
+        # This prevents the `destnCountryCd` error from the API if ZM is mistakenly set for an export.
+        if destnCountryCd == "ZM":
+            frappe.throw(f"For an Export Sale, the destination country '{destn_country}' cannot be Zambia ({destnCountryCd}). Please select a foreign country.")
 
 
         category_totals = {
@@ -1384,9 +1394,13 @@ class zraSales(ZRAClient):
         for i, item in enumerate(items, 1):
             item_code = item.get("item_code")
             item_doc = frappe.get_doc("Item", item_code)
+
             
             qty = abs(flt(item.get("qty", 1))) 
-            price = flt(item.get("rate") or item_doc.get("standard_rate", 0)) # Assuming price is tax-inclusive if not specified
+            price = flt(item.get("rate") or item_doc.get("standard_rate", 0)) 
+            packaging_unit = item_doc.get("custom_packaging_unit_code", "").strip()
+            unit_name = item_doc.get("custom_units_of_measure", "").strip()
+            print("Unit name: ", unit_name)
             
             # This is the tax-inclusive amount for the line item
             gross_line_amount = flt(qty * price, 4) 
@@ -1409,7 +1423,18 @@ class zraSales(ZRAClient):
                 "ZeroRatingLocalPurchases": "C2", "ZeroRatedByNature": "C3",
                 "Exempt": "D", "Disbursement": "E", "ServiceCharge10%": "F", "ReverseVAT": "RVAT"
             }
-            vatCatCd = vat_map.get(vat_doc_cat, "C1") # Default to C1 for exports
+            
+            # --- VAT Category Validation ---
+            vatCatCd = vat_map.get(vat_doc_cat) 
+            
+            if not vatCatCd:
+                frappe.throw(f"Invalid or missing VAT category '{vat_doc_cat}' configured for item '{item_code}'. Please ensure it is one of the recognized types (e.g., 'Exports', 'StandardRated').")
+            
+            # Second, if it's an export sale, strongly recommend C1
+            # Assuming that if this function `create_export_sale_payload` is called, it IS an export sale.
+            if vatCatCd != "C1":
+                frappe.throw(f"For an Export Sale, item '{item_code}' has VAT category '{vat_doc_cat}' (mapped to '{vatCatCd}'). For export sales, all items should typically be categorized as 'Exports' (C1). Please correct the VAT category for this item.")
+            # --- End VAT Category Validation ---
 
             # Excise Tax Mapping
             exciseTxCatCd = ""
@@ -1446,6 +1471,9 @@ class zraSales(ZRAClient):
             # This 'taxable_base_for_other_taxes' will be the tax-exclusive amount from VAT calculation.
             taxable_base_for_other_taxes = net_line_amount 
 
+            # Since we are enforcing vatCatCd == "C1" for export sales in the validation step above,
+            # this section can be simplified for export sales, but keeping the full structure
+            # allows this function to potentially be adapted or ensures robustness.
             if vatCatCd == "A":  # Standard Rated 16%
                 vat_taxable = flt(net_line_amount / 1.16, 4)
                 vat_amount = flt(vat_taxable * 0.16, 4)
@@ -1462,10 +1490,12 @@ class zraSales(ZRAClient):
                 vat_taxable = flt(net_line_amount / 1.16, 4)
                 vat_amount = flt(vat_taxable * 0.16, 4)
                 taxable_base_for_other_taxes = vat_taxable
-            else:  # C1, C2, C3, D, E (Zero rated or Exempt for VAT)
+            # For C1, C2, C3, D, E (Zero rated or Exempt for VAT)
+            else:  
                 vat_taxable = net_line_amount # For zero-rated/exempt, the whole amount is taxable base
-                vat_amount = 0.0
+                vat_amount = 0.0 # This will be the case for C1
                 taxable_base_for_other_taxes = vat_taxable # Still use this for other tax calculations
+
 
             # Calculate special taxes based on the determined taxable_base_for_other_taxes
             if exciseTxCatCd == "ECM":  # 5%
@@ -1486,17 +1516,6 @@ class zraSales(ZRAClient):
                 tl_taxable = taxable_base_for_other_taxes
                 tl_amount = flt(tl_taxable * 0.015, 4)
 
-            # Total tax exclusive amount for the line item (sum of all taxable bases)
-            # This assumes that the 'taxable' amounts for each tax type are based on the same underlying net_line_amount after discount,
-            # but *before* adding any tax. This is crucial for correct ZRA calculation.
-            # If your 'prc' is tax-inclusive, then the 'totAmt' of the line item should simply be net_line_amount.
-            # The individual vatTaxblAmt, exciseTaxblAmt, etc., would be the base for *that specific tax*.
-            
-            # Let's adjust splyAmt to be the tax-exclusive supply amount if price is tax-inclusive.
-            # splyAmt in documentation: "total amount of the supplied item (qty * prc)"
-            # This usually means gross, so we'll keep gross for splyAmt.
-            # However, the `vatTaxblAmt` etc. are the tax-exclusive components for *each* tax.
-            
             # Recalculate `totAmt` to be just `net_line_amount` (after discount, before splitting taxes)
             total_amount_line_item = net_line_amount
 
@@ -1538,10 +1557,10 @@ class zraSales(ZRAClient):
                 "itemCd": item_code,
                 "itemClsCd": item_doc.get("custom_item_classification_code", "50102518"), # Assuming a default if not set
                 "itemNm": item.get("item_name"),
-                "bcd": item_doc.get("barcode", ""), # Barcode from item_doc, not country code
-                "pkgUnitCd": item_doc.get("custom_packaging_unit_code", "EA"), # Default to Each if not set
-                "pkg": item.get("pkg", 1), # Default to 1 package if not specified
-                "qtyUnitCd": zra_qty_unit_code,
+                "bcd": item_doc.get("barcode", ""),
+                "pkgUnitCd": "WRAP",
+                "pkg": item.get("pkg", 1),
+                "qtyUnitCd": "U",
                 "qty": qty,
                 "prc": flt(price, 4),
                 "splyAmt": flt(gross_line_amount, 4), # Total supply amount for the line (qty * price)
@@ -1567,22 +1586,22 @@ class zraSales(ZRAClient):
         # Calculate total taxable and total tax amounts for the entire invoice
         # Sum of all individual taxable amounts for each tax type
         total_taxable_amount = sum(cat['taxable'] for cat in category_totals.values()) + \
-                               sum(cat['taxable'] for cat in special_tax_totals.values())
+                            sum(cat['taxable'] for cat in special_tax_totals.values())
         
         # Sum of all individual tax amounts for each tax type
         total_tax_amount = sum(cat['tax'] for cat in category_totals.values()) + \
-                           sum(cat['tax'] for cat in special_tax_totals.values())
+                        sum(cat['tax'] for cat in special_tax_totals.values())
 
         payload = {
             "tpin": self.tpin,
             "bhfId": self.branch_code,
             "orgSdcId": "SDC0010002709", # Verify this value or make it configurable
             "cisInvcNo": cisInvcNo,
-            "orgInvcNo": orgInvcNo, # Will be None for a new export sale
+            "orgInvcNo": 0, # Will be None for a new export sale
             "custTpin": customer_tpin,
             "custNm": customer_name,
             "salesTyCd": "N", # Normal sales
-            "rcptTyCd": "S",  # Sale (as per "Save Sales Request")
+            "rcptTyCd": "S",  
             "pmtTyCd": export_sale_data.get("payment_type_code", "01"), # Default to "01" (Cash) if not provided
             "salesSttsCd": "02", # Assuming 'Approved' for a sales request
             "cfmDt": now.strftime("%Y%m%d%H%M%S"),
@@ -1663,20 +1682,31 @@ class zraSales(ZRAClient):
             "lpoNumber": export_sale_data.get("lpo_number") or None,
             "currencyTyCd": currency,
             "exchangeRt": flt(export_sale_data.get("exchange_rate", 1.0), 4), # Ensure this is a float
-            "destnCountryCd": destnCountryCd, # Populated above
+            "destnCountryCd": destnCountryCd, 
             "dbtRsnCd": "",  # Empty for sales, only for debit notes
             "invcAdjustReason": "", # Empty for sales, only for debit notes
             "itemList": item_list
         }
 
-        print("\n--- Export Sale Payload Constructed ---")
+        print("\n--- Export Sale Payload Constructed ---", destnCountryCd)
         print(payload)
 
         response = self.call_export_sale_client(payload)
+        
+        # Fix: Parse the JSON response first, then use .get() on the parsed data
+        try:
+            if hasattr(response, "json"):
+                response_data = response.json()
+            else:
+                # If response doesn't have .json(), it might be a direct dict from mock
+                response_data = response 
+        except Exception as e:
+            frappe.throw(f"Failed to parse response JSON: {e}")
 
-        if response.get("resultCd") == "000":
-            if response.get("data") and response["data"].get("rcptNo"):
-                rcpt_no = response["data"]["rcptNo"]
+        # Use response_data instead of response for dictionary operations
+        if response_data.get("resultCd") == "000":
+            if response_data.get("data") and response_data["data"].get("rcptNo"):
+                rcpt_no = response_data["data"]["rcptNo"]
                 doc_name = export_sale_data.get("name")
                 self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
                 frappe.msgprint(f"Export Sale created successfully. Receipt No: {rcpt_no}")
@@ -1690,9 +1720,9 @@ class zraSales(ZRAClient):
             for item in item_list:
                 # Calculate total taxable and tax amounts for this item based on the line item's individual taxable/tax amounts
                 item_total_taxable = item.get("vatTaxblAmt", 0) + item.get("exciseTaxblAmt", 0) + \
-                                     item.get("tlTaxblAmt", 0) + item.get("iplTaxblAmt", 0)
+                                    item.get("tlTaxblAmt", 0) + item.get("iplTaxblAmt", 0)
                 item_total_tax = item.get("vatAmt", 0) + item.get("exciseTxAmt", 0) + \
-                                 item.get("tlAmt", 0) + item.get("iplAmt", 0)
+                                item.get("tlAmt", 0) + item.get("iplAmt", 0)
                 
                 update_stock_item.append({
                     "itemSeq": item.get("itemSeq"),
@@ -1762,11 +1792,968 @@ class zraSales(ZRAClient):
             else:
                 frappe.throw(f"Failed to update detailed stock: {call_update_stock_after_purchase.get('resultMsg', 'Unknown error')}")
         else:
-            frappe.throw(f"Failed to create Export Sale: {response.get('resultMsg', 'Unknown error')}")
+            frappe.throw(f"Failed to create Export Sale: {response_data.get('resultMsg', 'Unknown error')}")
 
-    
+    def create_lpo_sale_transaction_payload(self, lpo_data):
+        now = datetime.now()
+
+        customer_name = lpo_data.get("customer") or lpo_data.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name) if customer_name else None
+        customer_tpin = customer_doc.get("custom_customer_tpin") if customer_doc else ""
+        
+        # For export sales, cisInvcNo should be the system's generated invoice number
+        cisInvcNo = lpo_data.get("name", f"EXP-{random.randint(1000,9999)}")
+        
+        # orgInvcNo should only be present for credit/debit notes. For a new export sale, it should be null or 0.
+        # Assuming for a 'Save Sales Request - Exports' this is a new sale, not a linked one.
+ 
+
+        created_by = lpo_data.get("owner") or "system"
+        currency = lpo_data.get("currency") or "ZMW"
+        
+        # Destination Country Code (Required for Exports)
+        destn_country = lpo_data.get("custom_destination_country")
+        destnCountryCd = ""
+        if destn_country:
+            try:
+                # Assuming an external service to get country code from country name
+                res = requests.get(f"http://0.0.0.0:7000/country/{quote(destn_country)}/", timeout=10)
+                res.raise_for_status()
+                country_data = res.json()
+                destnCountryCd = country_data.get("code")
+                if not destnCountryCd:
+                    frappe.throw(f"Country code not found for '{destn_country}' from external API response: {country_data}")
+            except requests.exceptions.Timeout:
+                frappe.throw(f"Timeout fetching country code for '{destn_country}'.")
+            except requests.RequestException as e:
+                frappe.throw(f"Error fetching country code for '{destn_country}' from external API: {e}")
+        else:
+            frappe.throw("Destination Country is required for Export Sales.")
+
+        # Special check: If destination country is ZM (Zambia's code, assuming your system recognizes it),
+        # then it's not a true export, even if custom_destination_country was set.
+        # This prevents the `destnCountryCd` error from the API if ZM is mistakenly set for an export.
+        if destnCountryCd == "ZM":
+            frappe.throw(f"For an Export Sale, the destination country '{destn_country}' cannot be Zambia ({destnCountryCd}). Please select a foreign country.")
 
 
+        category_totals = {
+            'A': {'taxable': 0.0, 'tax': 0.0},
+            'B': {'taxable': 0.0, 'tax': 0.0},
+            'C1': {'taxable': 0.0, 'tax': 0.0}, # Exports
+            'C2': {'taxable': 0.0, 'tax': 0.0},
+            'C3': {'taxable': 0.0, 'tax': 0.0},
+            'D': {'taxable': 0.0, 'tax': 0.0},
+            'RVAT': {'taxable': 0.0, 'tax': 0.0},
+            'E': {'taxable': 0.0, 'tax': 0.0},
+            'F': {'taxable': 0.0, 'tax': 0.0}
+        }
+        
+        special_tax_totals = {
+            'ipl1': {'taxable': 0.0, 'tax': 0.0},
+            'ipl2': {'taxable': 0.0, 'tax': 0.0},
+            'tl': {'taxable': 0.0, 'tax': 0.0},
+            'ecm': {'taxable': 0.0, 'tax': 0.0},
+            'exeeg': {'taxable': 0.0, 'tax': 0.0}
+        }
+
+        totals = {'gross': 0.0, 'discount': 0.0, 'net': 0.0, 'total_tax_inclusive_amount': 0.0}
+        item_list = []
+        items = lpo_data.get("items", [])
+        
+        for i, item in enumerate(items, 1):
+            item_code = item.get("item_code")
+            item_doc = frappe.get_doc("Item", item_code)
+
+            
+            qty = abs(flt(item.get("qty", 1))) 
+            price = flt(item.get("rate") or item_doc.get("standard_rate", 0)) 
+            packaging_unit = item_doc.get("custom_packaging_unit_code", "").strip()
+            unit_name = item_doc.get("custom_units_of_measure", "").strip()
+            print("Unit name: ", unit_name)
+            
+            # This is the tax-inclusive amount for the line item
+            gross_line_amount = flt(qty * price, 4) 
+
+            discount_pct = flt(item.get("discount_percentage", 0))
+            discount_amt = flt(gross_line_amount * discount_pct / 100, 4)
+            
+            # Net amount after discount, still tax-inclusive for now
+            net_line_amount = flt(gross_line_amount - discount_amt, 4)
+
+            # Retrieve custom fields from item_doc
+            ipl_doc_cat = (item_doc.get("custom_ipl_category_code") or "").strip()
+            excise_doc_cat = (item_doc.get("custom_excise_tax_category_code") or "").strip()
+            tl_doc_cat = (item_doc.get("custom_tourism_levy") or "").strip()
+            vat_doc_cat = (item_doc.get("custom_vat") or "").strip()
+            print(ipl_doc_cat, excise_doc_cat, tl_doc_cat, vat_doc_cat)
 
 
-		
+            # VAT Mapping (based on documentation)
+            vat_map = {
+                "StandardRated": "A", "MinimumTaxableValue": "B", "Exports": "C1",
+                "ZeroRatingLocalPurchases": "C2", "ZeroRatedByNature": "C3",
+                "Exempt": "D", "Disbursement": "E", "ServiceCharge10%": "F", "ReverseVAT": "RVAT"
+            }
+            
+            # --- VAT Category Validation ---
+            vatCatCd = vat_map.get(vat_doc_cat) 
+            
+            if not vatCatCd:
+                frappe.throw(f"Invalid or missing VAT category '{vat_doc_cat}' configured for item '{item_code}'. Please ensure it is one of the recognized types (e.g., 'Exports', 'StandardRated').")
+            
+            # Second, if it's an export sale, strongly recommend C1
+            # Assuming that if this function `create_export_sale_payload` is called, it IS an export sale.
+            if vatCatCd != "C2":
+                print(vatCatCd)
+                frappe.throw(
+                    f"For LPO transactions, the item '{item_code}' has a VAT category of '{vat_doc_cat}' (mapped to '{vatCatCd}'). "
+                    f"Items in LPO transactions should be categorized under 'Exports' (C2). Please correct the VAT category for this item."
+                )
+
+            # --- End VAT Category Validation ---
+
+            # Excise Tax Mapping
+            exciseTxCatCd = ""
+            if excise_doc_cat == "Excise on Coal":
+                exciseTxCatCd = "ECM"
+            elif excise_doc_cat == "Excise Electricity":
+                exciseTxCatCd = "EXEEG"
+
+            # IPL Mapping
+            iplCatCd = ""
+            if ipl_doc_cat == "Insurance Premium Levy":
+                iplCatCd = "IPL1"
+            elif ipl_doc_cat == "Re-Insurance":
+                iplCatCd = "IPL2"
+
+            # Tourism Levy Mapping
+            tlCatCd = "TL" if tl_doc_cat == "Tourism Levy" else ""
+
+            zra_qty_unit_code = item_doc.get("custom_zra_qty_unit_code", "EA")
+            
+            # --- Tax Calculation Logic (Revised for clarity and consistency) ---
+            # Assume net_line_amount is the tax-inclusive amount after discount for a particular line item.
+            # We need to extract the taxable base and the tax amount for each category.
+
+            vat_taxable = 0.0
+            vat_amount = 0.0
+            excise_taxable = 0.0
+            excise_amount = 0.0
+            ipl_taxable = 0.0
+            ipl_amount = 0.0
+            tl_taxable = 0.0
+            tl_amount = 0.0
+            
+            # This 'taxable_base_for_other_taxes' will be the tax-exclusive amount from VAT calculation.
+            taxable_base_for_other_taxes = net_line_amount 
+
+            # Since we are enforcing vatCatCd == "C1" for export sales in the validation step above,
+            # this section can be simplified for export sales, but keeping the full structure
+            # allows this function to potentially be adapted or ensures robustness.
+            if vatCatCd == "A":  # Standard Rated 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "B":  # Minimum Taxable Value 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "F":  # Service Charge 10%
+                vat_taxable = flt(net_line_amount / 1.10, 4)
+                vat_amount = flt(vat_taxable * 0.10, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "RVAT":  # Reverse VAT 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            # For C1, C2, C3, D, E (Zero rated or Exempt for VAT)
+            else:  
+                vat_taxable = net_line_amount # For zero-rated/exempt, the whole amount is taxable base
+                vat_amount = 0.0 # This will be the case for C1
+                taxable_base_for_other_taxes = vat_taxable # Still use this for other tax calculations
+
+
+            # Calculate special taxes based on the determined taxable_base_for_other_taxes
+            if exciseTxCatCd == "ECM":  # 5%
+                excise_taxable = taxable_base_for_other_taxes
+                excise_amount = flt(excise_taxable * 0.05, 4)
+            elif exciseTxCatCd == "EXEEG":  # 3%
+                excise_taxable = taxable_base_for_other_taxes
+                excise_amount = flt(excise_taxable * 0.03, 4)
+
+            if iplCatCd == "IPL1":  # 5%
+                ipl_taxable = taxable_base_for_other_taxes
+                ipl_amount = flt(ipl_taxable * 0.05, 4)
+            elif iplCatCd == "IPL2":  # 0%
+                ipl_taxable = taxable_base_for_other_taxes
+                ipl_amount = 0.0 # Re-Insurance is 0%
+
+            if tlCatCd == "TL":  # 1.5%
+                tl_taxable = taxable_base_for_other_taxes
+                tl_amount = flt(tl_taxable * 0.015, 4)
+
+            # Recalculate `totAmt` to be just `net_line_amount` (after discount, before splitting taxes)
+            total_amount_line_item = net_line_amount
+
+            # Update category totals for the main payload
+            if vatCatCd in category_totals:
+                category_totals[vatCatCd]['taxable'] += vat_taxable
+                category_totals[vatCatCd]['tax'] += vat_amount
+
+            if exciseTxCatCd == "ECM":
+                special_tax_totals['ecm']['taxable'] += excise_taxable
+                special_tax_totals['ecm']['tax'] += excise_amount
+            elif exciseTxCatCd == "EXEEG":
+                special_tax_totals['exeeg']['taxable'] += excise_taxable
+                special_tax_totals['exeeg']['tax'] += excise_amount
+
+            if iplCatCd == "IPL1":
+                special_tax_totals['ipl1']['taxable'] += ipl_taxable
+                special_tax_totals['ipl1']['tax'] += ipl_amount
+            elif iplCatCd == "IPL2":
+                special_tax_totals['ipl2']['taxable'] += ipl_taxable
+                special_tax_totals['ipl2']['tax'] += ipl_amount
+
+            if tlCatCd == "TL":
+                special_tax_totals['tl']['taxable'] += tl_taxable
+                special_tax_totals['tl']['tax'] += tl_amount
+
+            totals['gross'] += gross_line_amount
+            totals['discount'] += discount_amt
+            totals['net'] += net_line_amount # This is the net tax-inclusive amount per line item
+            totals['total_tax_inclusive_amount'] += total_amount_line_item
+
+            # Get RRP (Recommended Retail Price) for MTV items
+            rrp = 0.0
+            if vatCatCd == "B": # Minimum Taxable Value requires RRP
+                rrp = flt(item_doc.get("custom_rrp") or item_doc.get("custom_recommended_retail_price") or price, 4)
+            
+            item_list.append({
+                "itemSeq": i,
+                "itemCd": item_code,
+                "itemClsCd": item_doc.get("custom_item_classification_code", "50102518"), # Assuming a default if not set
+                "itemNm": item.get("item_name"),
+                "bcd": item_doc.get("barcode", ""),
+                "pkgUnitCd": "WRAP",
+                "pkg": item.get("pkg", 1),
+                "qtyUnitCd": "EA",
+                "qty": qty,
+                "prc": flt(price, 4),
+                "splyAmt": flt(gross_line_amount, 4), # Total supply amount for the line (qty * price)
+                "dcRt": flt(discount_pct, 2),
+                "dcAmt": flt(discount_amt, 2),
+                "isrccCd": item.get("insurance_company_code", ""),
+                "isrccNm": item.get("insurance_company_name", ""),
+                "isrcAmt": flt(item.get("insurance_amount", 0.0), 4), # Assuming this comes from item data
+                "vatCatCd": vatCatCd,
+                "exciseTxCatCd": exciseTxCatCd if exciseTxCatCd else None, # Null if not applicable
+                "vatTaxblAmt": flt(vat_taxable, 4),
+                "exciseTaxblAmt": flt(excise_taxable, 4),
+                "tlTaxblAmt": flt(tl_taxable, 4),
+                "iplTaxblAmt": flt(ipl_taxable, 4),
+                "iplAmt": flt(ipl_amount, 4),
+                "tlAmt": flt(tl_amount, 4),
+                "vatAmt": flt(vat_amount, 4),
+                "exciseTxAmt": flt(excise_amount, 4),
+                "totAmt": flt(total_amount_line_item, 2), # Total tax inclusive amount of the line item
+                "rrp": flt(rrp, 4) # Only required for MTV items, otherwise 0.0 or null
+            })
+
+        # Calculate total taxable and total tax amounts for the entire invoice
+        # Sum of all individual taxable amounts for each tax type
+        total_taxable_amount = sum(cat['taxable'] for cat in category_totals.values()) + \
+                            sum(cat['taxable'] for cat in special_tax_totals.values())
+        
+        # Sum of all individual tax amounts for each tax type
+        total_tax_amount = sum(cat['tax'] for cat in category_totals.values()) + \
+                        sum(cat['tax'] for cat in special_tax_totals.values())
+
+        payload = {
+            "tpin": self.tpin,
+            "bhfId": self.branch_code,
+            "orgSdcId": "SDC0010002709", # Verify this value or make it configurable
+            "cisInvcNo": cisInvcNo,
+            "orgInvcNo": 0, # Will be None for a new export sale
+            "custTpin": "1002328764",
+            "custNm": customer_name,
+            "salesTyCd": "N", 
+            "rcptTyCd": "S",  
+            "pmtTyCd": lpo_data.get("payment_type_code", "01"), 
+            "salesSttsCd": "02", # Assuming 'Approved' for a sales request
+            "cfmDt": now.strftime("%Y%m%d%H%M%S"),
+            "salesDt": now.strftime("%Y%m%d"),
+            "stockRlsDt": lpo_data.get("stock_release_date") or None, # Optional
+            "cnclReqDt": lpo_data.get("cancellation_request_date") or None, # Optional
+            "cnclDt": lpo_data.get("cancellation_date") or None, # Optional
+            "rfdDt": lpo_data.get("refund_date") or None, # Optional
+            "rfdRsnCd": lpo_data.get("refund_reason_code", ""), # Optional
+            "totItemCnt": len(item_list),
+            
+            # Individual tax category taxable amounts
+            "taxblAmtA": flt(category_totals['A']['taxable'], 4),
+            "taxblAmtB": flt(category_totals['B']['taxable'], 4),
+            "taxblAmtC1": flt(category_totals['C1']['taxable'], 4),
+            "taxblAmtC2": flt(category_totals['C2']['taxable'], 4),
+            "taxblAmtC3": flt(category_totals['C3']['taxable'], 4),
+            "taxblAmtD": flt(category_totals['D']['taxable'], 4),
+            "taxblAmtRvat": flt(category_totals['RVAT']['taxable'], 4),
+            "taxblAmtE": flt(category_totals['E']['taxable'], 4),
+            "taxblAmtF": flt(category_totals['F']['taxable'], 4),
+            "taxblAmtIpl1": flt(special_tax_totals['ipl1']['taxable'], 4),
+            "taxblAmtIpl2": flt(special_tax_totals['ipl2']['taxable'], 4),
+            "taxblAmtTl": flt(special_tax_totals['tl']['taxable'], 4),
+            "taxblAmtEcm": flt(special_tax_totals['ecm']['taxable'], 4),
+            "taxblAmtExeeg": flt(special_tax_totals['exeeg']['taxable'], 4),
+            "taxblAmtTot": 0.0, # Check documentation, often for TOT (Turnover Tax) if applicable
+            
+            # Tax rates (fixed as per documentation)
+            "taxRtA": 16,
+            "taxRtB": 16,
+            "taxRtC1": 0,
+            "taxRtC2": 0,
+            "taxRtC3": 0,
+            "taxRtD": 0,
+            "taxRtRvat": 16,
+            "taxRtE": 0,
+            "taxRtF": 10,
+            "taxRtIpl1": 5,
+            "taxRtIpl2": 0,
+            "taxRtTl": 1.5,
+            "taxRtEcm": 5,
+            "taxRtExeeg": 3,
+            "taxRtTot": 0,
+            
+            # Individual tax category amounts (corrected names)
+            "taxAmtA": flt(category_totals['A']['tax'], 4),
+            "taxAmtB": flt(category_totals['B']['tax'], 4),
+            "taxAmtC1": flt(category_totals['C1']['tax'], 4),
+            "taxAmtC2": flt(category_totals['C2']['tax'], 4),
+            "taxAmtC3": flt(category_totals['C3']['tax'], 4),
+            "taxAmtD": flt(category_totals['D']['tax'], 4),
+            "taxAmtRvat": flt(category_totals['RVAT']['tax'], 4),
+            "taxAmtE": flt(category_totals['E']['tax'], 4),
+            "taxAmtF": flt(category_totals['F']['tax'], 4),
+            "taxAmtIpl1": flt(special_tax_totals['ipl1']['tax'], 4), # Corrected name
+            "taxAmtIpl2": flt(special_tax_totals['ipl2']['tax'], 4), # Corrected name
+            "taxAmtTl": flt(special_tax_totals['tl']['tax'], 4), # Corrected name
+            "taxAmtEcm": flt(special_tax_totals['ecm']['tax'], 4), # Corrected name
+            "taxAmtExeeg": flt(special_tax_totals['exeeg']['tax'], 4), # Corrected name
+            "taxAmtTot": 0.0, # For Turnover Tax, if applicable
+            
+            # Totals
+            "totTaxblAmt": flt(total_taxable_amount, 2), # As per doc (18,2)
+            "totTaxAmt": flt(total_tax_amount, 2), # As per doc (18,2)
+            "totAmt": flt(totals['total_tax_inclusive_amount'], 2), # Total tax-inclusive invoice amount
+            
+            # Other fields
+            "cashDcRt": flt(lpo_data.get("cash_discount_rate", 0.0), 4),
+            "cashDcAmt": flt(lpo_data.get("cash_discount_amount", 0.0), 4),
+            "prchrAcptcYn": "Y", # Assuming "Y" for a new export sale, as per doc "Yes or No"
+            "remark": lpo_data.get("remarks") or "",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by,
+            "saleCtyCd": "1", # As per doc (pass 1)
+            "lpoNumber": "3676521678",
+            "currencyTyCd": currency,
+            "exchangeRt": flt(lpo_data.get("exchange_rate", 1.0), 4),
+            "dbtRsnCd": "", 
+            "invcAdjustReason": "", 
+            "itemList": item_list
+        }
+
+        print("\n--- LPO Sale Payload Constructed ---", destnCountryCd)
+        print(payload)
+
+        response = self.call_lpo_sale_client(payload)
+        
+        # Fix: Parse the JSON response first, then use .get() on the parsed data
+        try:
+            if hasattr(response, "json"):
+                response_data = response.json()
+            else:
+                # If response doesn't have .json(), it might be a direct dict from mock
+                response_data = response 
+        except Exception as e:
+            frappe.throw(f"Failed to parse response JSON: {e}")
+
+        # Use response_data instead of response for dictionary operations
+        if response_data.get("resultCd") == "000":
+            if response_data.get("data") and response_data["data"].get("rcptNo"):
+                rcpt_no = response_data["data"]["rcptNo"]
+                doc_name = lpo_data.get("name")
+                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
+                frappe.msgprint(f"Export Sale created successfully. Receipt No: {rcpt_no}")
+            else:
+                frappe.msgprint("Export Sale created successfully but no receipt number was returned.")
+
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            update_stock_item = []
+            update_stock_master = []
+
+            for item in item_list:
+                # Calculate total taxable and tax amounts for this item based on the line item's individual taxable/tax amounts
+                item_total_taxable = item.get("vatTaxblAmt", 0) + item.get("exciseTaxblAmt", 0) + \
+                                    item.get("tlTaxblAmt", 0) + item.get("iplTaxblAmt", 0)
+                item_total_tax = item.get("vatAmt", 0) + item.get("exciseTxAmt", 0) + \
+                                item.get("tlAmt", 0) + item.get("iplAmt", 0)
+                
+                update_stock_item.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"), # This is the gross supply amount from the sales payload
+                    "taxblAmt": flt(item_total_taxable, 4), # Total taxable amount for this line item across all taxes
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": flt(item_total_tax, 4), # Total tax amount for this line item across all taxes
+                    "totAmt": item.get("totAmt"), # Total tax-inclusive amount for this line item
+                    "pkg": item.get("pkg"),
+                    "totDcAmt": item.get("dcAmt", 0),
+                })
+                
+                # Get actual remaining quantity from bins (subtract the sold qty for an export sale)
+                # This assumes 'actual_qty' refers to available stock that needs to be reduced.
+                bins = frappe.db.get_all("Bin", filters={"item_code": item.get("itemCd")}, fields=["actual_qty"])
+                remaining_qty = sum(flt(b.get("actual_qty", 0)) for b in bins) - item.get("qty", 0)
+                
+                update_stock_master.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": max(0, remaining_qty) # Ensure quantity doesn't go negative
+                })
+
+            # Payload for updating stock after sales (sarTyCd "02" for "Sale")
+            update_stock_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "sarNo": 1, 
+                "orgSarNo": 0, 
+                "regTyCd": "M", 
+                "sarTyCd": "02", 
+                "ocrnDt": ocrnDt,
+                "totItemCnt": payload["totItemCnt"],
+                "totTaxblAmt": payload["totTaxblAmt"],
+                "totTaxAmt": payload["totTaxAmt"],
+                "totAmt": payload["totAmt"],
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_item
+            }
+
+            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            print("Update stock response:", call_update_stock_after_purchase)
+            
+            if call_update_stock_after_purchase.get("resultCd") == "000":
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.branch_code,
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master
+                }
+
+                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
+                print("Update stock master response:", call_update_stock_master_after_purchase)
+                
+            else:
+                frappe.throw(f"Failed to update detailed stock: {call_update_stock_after_purchase.get('resultMsg', 'Unknown error')}")
+        else:
+            frappe.throw(f"Failed to create Export Sale: {response_data.get('resultMsg', 'Unknown error')}")
+
+    def get_principal(self):
+
+        payload = {
+            "tpin": self.tpin,
+            "bhfId": self.branch_code,
+            "lastReqDt":"20240123121449"
+        }
+        self.call_get_principal(payload)
+
+        
+
+    def create_rvat_with_agent_sale(self, rvat_data):
+        data = self.get_principal()
+        print(data)
+        now = datetime.now()
+
+        customer_name = rvat_data.get("customer") or rvat_data.get("customer_name") or ""
+        customer_doc = frappe.get_doc("Customer", customer_name) if customer_name else None
+        customer_tpin = customer_doc.get("custom_customer_tpin") if customer_doc else ""
+        
+        cisInvcNo = rvat_data.get("name", f"EXP-{random.randint(1000,9999)}")
+        
+
+ 
+
+        created_by = rvat_data.get("owner") or "system"
+        currency = rvat_data.get("currency") or "ZMW"
+        
+        # Destination Country Code (Required for Exports)
+        destn_country = rvat_data.get("custom_destination_country")
+        destnCountryCd = ""
+        if destn_country:
+            try:
+                # Assuming an external service to get country code from country name
+                res = requests.get(f"http://0.0.0.0:7000/country/{quote(destn_country)}/", timeout=10)
+                res.raise_for_status()
+                country_data = res.json()
+                destnCountryCd = country_data.get("code")
+                if not destnCountryCd:
+                    frappe.throw(f"Country code not found for '{destn_country}' from external API response: {country_data}")
+            except requests.exceptions.Timeout:
+                frappe.throw(f"Timeout fetching country code for '{destn_country}'.")
+            except requests.RequestException as e:
+                frappe.throw(f"Error fetching country code for '{destn_country}' from external API: {e}")
+        else:
+            frappe.throw("Destination Country is required for Export Sales.")
+
+        # Special check: If destination country is ZM (Zambia's code, assuming your system recognizes it),
+        # then it's not a true export, even if custom_destination_country was set.
+        # This prevents the `destnCountryCd` error from the API if ZM is mistakenly set for an export.
+        if destnCountryCd == "ZM":
+            frappe.throw(f"For an Export Sale, the destination country '{destn_country}' cannot be Zambia ({destnCountryCd}). Please select a foreign country.")
+
+
+        category_totals = {
+            'A': {'taxable': 0.0, 'tax': 0.0},
+            'B': {'taxable': 0.0, 'tax': 0.0},
+            'C1': {'taxable': 0.0, 'tax': 0.0}, # Exports
+            'C2': {'taxable': 0.0, 'tax': 0.0},
+            'C3': {'taxable': 0.0, 'tax': 0.0},
+            'D': {'taxable': 0.0, 'tax': 0.0},
+            'RVAT': {'taxable': 0.0, 'tax': 0.0},
+            'E': {'taxable': 0.0, 'tax': 0.0},
+            'F': {'taxable': 0.0, 'tax': 0.0}
+        }
+        
+        special_tax_totals = {
+            'ipl1': {'taxable': 0.0, 'tax': 0.0},
+            'ipl2': {'taxable': 0.0, 'tax': 0.0},
+            'tl': {'taxable': 0.0, 'tax': 0.0},
+            'ecm': {'taxable': 0.0, 'tax': 0.0},
+            'exeeg': {'taxable': 0.0, 'tax': 0.0}
+        }
+
+        totals = {'gross': 0.0, 'discount': 0.0, 'net': 0.0, 'total_tax_inclusive_amount': 0.0}
+        item_list = []
+        items = rvat_data.get("items", [])
+        
+        for i, item in enumerate(items, 1):
+            item_code = item.get("item_code")
+            item_doc = frappe.get_doc("Item", item_code)
+
+            
+            qty = abs(flt(item.get("qty", 1))) 
+            price = flt(item.get("rate") or item_doc.get("standard_rate", 0)) 
+            packaging_unit = item_doc.get("custom_packaging_unit_code", "").strip()
+            unit_name = item_doc.get("custom_units_of_measure", "").strip()
+            print("Unit name: ", unit_name)
+            
+            # This is the tax-inclusive amount for the line item
+            gross_line_amount = flt(qty * price, 4) 
+
+            discount_pct = flt(item.get("discount_percentage", 0))
+            discount_amt = flt(gross_line_amount * discount_pct / 100, 4)
+            
+            # Net amount after discount, still tax-inclusive for now
+            net_line_amount = flt(gross_line_amount - discount_amt, 4)
+
+            # Retrieve custom fields from item_doc
+            ipl_doc_cat = (item_doc.get("custom_ipl_category_code") or "").strip()
+            excise_doc_cat = (item_doc.get("custom_excise_tax_category_code") or "").strip()
+            tl_doc_cat = (item_doc.get("custom_tourism_levy") or "").strip()
+            vat_doc_cat = (item_doc.get("custom_vat") or "").strip()
+            print(ipl_doc_cat, excise_doc_cat, tl_doc_cat, vat_doc_cat)
+
+
+            # VAT Mapping (based on documentation)
+            vat_map = {
+                "StandardRated": "A", "MinimumTaxableValue": "B", "Exports": "C1",
+                "ZeroRatingLocalPurchases": "C2", "ZeroRatedByNature": "C3",
+                "Exempt": "D", "Disbursement": "E", "ServiceCharge10%": "F", "ReverseVAT": "RVAT"
+            }
+            
+            # --- VAT Category Validation ---
+            vatCatCd = vat_map.get(vat_doc_cat) 
+            
+            if not vatCatCd:
+                frappe.throw(f"Invalid or missing VAT category '{vat_doc_cat}' configured for item '{item_code}'. Please ensure it is one of the recognized types (e.g., 'Exports', 'StandardRated').")
+            
+            # Second, if it's an export sale, strongly recommend C1
+            # The original comment was incorrect, the logic was for LPO transactions.
+            # Assuming that if this function `create_rvat_with_agent_sale` is called, it IS an agent sale.
+            if vatCatCd != "RVAT":
+                print(vatCatCd)
+                frappe.throw(
+                    f"For agent sales, the item '{item_code}' has a VAT category of '{vat_doc_cat}' (mapped to '{vatCatCd}'). "
+                    f"Items in agent sales transactions should be categorized under 'ReverseVAT' (RVAT). Please correct the VAT category for this item."
+                )
+
+            # --- End VAT Category Validation ---
+
+            # Excise Tax Mapping
+            exciseTxCatCd = ""
+            if excise_doc_cat == "Excise on Coal":
+                exciseTxCatCd = "ECM"
+            elif excise_doc_cat == "Excise Electricity":
+                exciseTxCatCd = "EXEEG"
+
+            # IPL Mapping
+            iplCatCd = ""
+            if ipl_doc_cat == "Insurance Premium Levy":
+                iplCatCd = "IPL1"
+            elif ipl_doc_cat == "Re-Insurance":
+                iplCatCd = "IPL2"
+
+            # Tourism Levy Mapping
+            tlCatCd = "TL" if tl_doc_cat == "Tourism Levy" else ""
+
+            zra_qty_unit_code = item_doc.get("custom_zra_qty_unit_code", "EA")
+            
+            # --- Tax Calculation Logic (Revised for clarity and consistency) ---
+            # Assume net_line_amount is the tax-inclusive amount after discount for a particular line item.
+            # We need to extract the taxable base and the tax amount for each category.
+
+            vat_taxable = 0.0
+            vat_amount = 0.0
+            excise_taxable = 0.0
+            excise_amount = 0.0
+            ipl_taxable = 0.0
+            ipl_amount = 0.0
+            tl_taxable = 0.0
+            tl_amount = 0.0
+            
+            # This 'taxable_base_for_other_taxes' will be the tax-exclusive amount from VAT calculation.
+            taxable_base_for_other_taxes = net_line_amount 
+
+            # Since we are enforcing vatCatCd == "RVAT" for agent sales in the validation step above,
+            # this section can be simplified for agent sales, but keeping the full structure
+            # allows this function to potentially be adapted or ensures robustness.
+            if vatCatCd == "A":  # Standard Rated 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "B":  # Minimum Taxable Value 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "F":  # Service Charge 10%
+                vat_taxable = flt(net_line_amount / 1.10, 4)
+                vat_amount = flt(vat_taxable * 0.10, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            elif vatCatCd == "RVAT":  # Reverse VAT 16%
+                vat_taxable = flt(net_line_amount / 1.16, 4)
+                vat_amount = flt(vat_taxable * 0.16, 4)
+                taxable_base_for_other_taxes = vat_taxable
+            # For C1, C2, C3, D, E (Zero rated or Exempt for VAT)
+            else:  
+                vat_taxable = net_line_amount # For zero-rated/exempt, the whole amount is taxable base
+                vat_amount = 0.0 # This will be the case for C1
+                taxable_base_for_other_taxes = vat_taxable # Still use this for other tax calculations
+
+
+            # Calculate special taxes based on the determined taxable_base_for_other_taxes
+            if exciseTxCatCd == "ECM":  # 5%
+                excise_taxable = taxable_base_for_other_taxes
+                excise_amount = flt(excise_taxable * 0.05, 4)
+            elif exciseTxCatCd == "EXEEG":  # 3%
+                excise_taxable = taxable_base_for_other_taxes
+                excise_amount = flt(excise_taxable * 0.03, 4)
+
+            if iplCatCd == "IPL1":  # 5%
+                ipl_taxable = taxable_base_for_other_taxes
+                ipl_amount = flt(ipl_taxable * 0.05, 4)
+            elif iplCatCd == "IPL2":  # 0%
+                ipl_taxable = taxable_base_for_other_taxes
+                ipl_amount = 0.0 # Re-Insurance is 0%
+
+            if tlCatCd == "TL":  # 1.5%
+                tl_taxable = taxable_base_for_other_taxes
+                tl_amount = flt(tl_taxable * 0.015, 4)
+
+            # Recalculate `totAmt` to be just `net_line_amount` (after discount, before splitting taxes)
+            total_amount_line_item = net_line_amount
+
+            # Update category totals for the main payload
+            if vatCatCd in category_totals:
+                category_totals[vatCatCd]['taxable'] += vat_taxable
+                category_totals[vatCatCd]['tax'] += vat_amount
+
+            if exciseTxCatCd == "ECM":
+                special_tax_totals['ecm']['taxable'] += excise_taxable
+                special_tax_totals['ecm']['tax'] += excise_amount
+            elif exciseTxCatCd == "EXEEG":
+                special_tax_totals['exeeg']['taxable'] += excise_taxable
+                special_tax_totals['exeeg']['tax'] += excise_amount
+
+            if iplCatCd == "IPL1":
+                special_tax_totals['ipl1']['taxable'] += ipl_taxable
+                special_tax_totals['ipl1']['tax'] += ipl_amount
+            elif iplCatCd == "IPL2":
+                special_tax_totals['ipl2']['taxable'] += ipl_taxable
+                special_tax_totals['ipl2']['tax'] += ipl_amount
+
+            if tlCatCd == "TL":
+                special_tax_totals['tl']['taxable'] += tl_taxable
+                special_tax_totals['tl']['tax'] += tl_amount
+
+            totals['gross'] += gross_line_amount
+            totals['discount'] += discount_amt
+            totals['net'] += net_line_amount # This is the net tax-inclusive amount per line item
+            totals['total_tax_inclusive_amount'] += total_amount_line_item
+
+            # Get RRP (Recommended Retail Price) for MTV items
+            rrp = 0.0
+            if vatCatCd == "B": # Minimum Taxable Value requires RRP
+                rrp = flt(item_doc.get("custom_rrp") or item_doc.get("custom_recommended_retail_price") or price, 4)
+            
+            item_list.append({
+                "itemSeq": i,
+                "itemCd": item_code,
+                "itemClsCd": item_doc.get("custom_item_classification_code", "50102518"), # Assuming a default if not set
+                "itemNm": item.get("item_name"),
+                "bcd": item_doc.get("barcode", ""),
+                "pkgUnitCd": "WRAP",
+                "pkg": item.get("pkg", 1),
+                "qtyUnitCd": "EA",
+                "qty": qty,
+                "prc": flt(price, 4),
+                "splyAmt": flt(gross_line_amount, 4), # Total supply amount for the line (qty * price)
+                "dcRt": flt(discount_pct, 2),
+                "dcAmt": flt(discount_amt, 2),
+                "isrccCd": item.get("insurance_company_code", ""),
+                "isrccNm": item.get("insurance_company_name", ""),
+                "isrcAmt": flt(item.get("insurance_amount", 0.0), 4), # Assuming this comes from item data
+                "vatCatCd": vatCatCd,
+                "exciseTxCatCd": exciseTxCatCd if exciseTxCatCd else None, # Null if not applicable
+                "vatTaxblAmt": flt(vat_taxable, 4),
+                "exciseTaxblAmt": flt(excise_taxable, 4),
+                "tlTaxblAmt": flt(tl_taxable, 4),
+                "iplTaxblAmt": flt(ipl_taxable, 4),
+                "iplAmt": flt(ipl_amount, 4),
+                "tlAmt": flt(tl_amount, 4),
+                "vatAmt": flt(vat_amount, 4),
+                "exciseTxAmt": flt(excise_amount, 4),
+                "totAmt": flt(total_amount_line_item, 2), # Total tax inclusive amount of the line item
+                "rrp": flt(rrp, 4) # Only required for MTV items, otherwise 0.0 or null
+            })
+
+        # Calculate total taxable and total tax amounts for the entire invoice
+        # Sum of all individual taxable amounts for each tax type
+        total_taxable_amount = sum(cat['taxable'] for cat in category_totals.values()) + \
+                            sum(cat['taxable'] for cat in special_tax_totals.values())
+        
+        # Sum of all individual tax amounts for each tax type
+        total_tax_amount = sum(cat['tax'] for cat in category_totals.values()) + \
+                        sum(cat['tax'] for cat in special_tax_totals.values())
+
+        payload = {
+            "tpin": self.tpin,
+            "bhfId": self.branch_code,
+            "orgSdcId": "SDC0010002709", # Verify this value or make it configurable
+            "cisInvcNo": cisInvcNo,
+            "orgInvcNo": 0, # Will be None for a new agent sale
+            "custTpin": "1002328764",
+            "custNm": customer_name,
+            "salesTyCd": "N", 
+            "rcptTyCd": "S",  
+            "pmtTyCd": rvat_data.get("payment_type_code", "01"), 
+            "salesSttsCd": "02", # Assuming 'Approved' for a sales request
+            "cfmDt": now.strftime("%Y%m%d%H%M%S"),
+            "salesDt": now.strftime("%Y%m%d"),
+            "stockRlsDt": rvat_data.get("stock_release_date") or None, # Optional
+            "cnclReqDt": rvat_data.get("cancellation_request_date") or None, # Optional
+            "cnclDt": rvat_data.get("cancellation_date") or None, # Optional
+            "rfdDt": rvat_data.get("refund_date") or None, # Optional
+            "rfdRsnCd": rvat_data.get("refund_reason_code", ""), # Optional
+            "totItemCnt": len(item_list),
+            
+            # Individual tax category taxable amounts
+            "taxblAmtA": flt(category_totals['A']['taxable'], 4),
+            "taxblAmtB": flt(category_totals['B']['taxable'], 4),
+            "taxblAmtC1": flt(category_totals['C1']['taxable'], 4),
+            "taxblAmtC2": flt(category_totals['C2']['taxable'], 4),
+            "taxblAmtC3": flt(category_totals['C3']['taxable'], 4),
+            "taxblAmtD": flt(category_totals['D']['taxable'], 4),
+            "taxblAmtRvat": flt(category_totals['RVAT']['taxable'], 4),
+            "taxblAmtE": flt(category_totals['E']['taxable'], 4),
+            "taxblAmtF": flt(category_totals['F']['taxable'], 4),
+            "taxblAmtIpl1": flt(special_tax_totals['ipl1']['taxable'], 4),
+            "taxblAmtIpl2": flt(special_tax_totals['ipl2']['taxable'], 4),
+            "taxblAmtTl": flt(special_tax_totals['tl']['taxable'], 4),
+            "taxblAmtEcm": flt(special_tax_totals['ecm']['taxable'], 4),
+            "taxblAmtExeeg": flt(special_tax_totals['exeeg']['taxable'], 4),
+            "taxblAmtTot": 0.0, # Check documentation, often for TOT (Turnover Tax) if applicable
+            
+            # Tax rates (fixed as per documentation)
+            "taxRtA": 16,
+            "taxRtB": 16,
+            "taxRtC1": 0,
+            "taxRtC2": 0,
+            "taxRtC3": 0,
+            "taxRtD": 0,
+            "taxRtRvat": 16,
+            "taxRtE": 0,
+            "taxRtF": 10,
+            "taxRtIpl1": 5,
+            "taxRtIpl2": 0,
+            "taxRtTl": 1.5,
+            "taxRtEcm": 5,
+            "taxRtExeeg": 3,
+            "taxRtTot": 0,
+            
+            # Individual tax category amounts (corrected names)
+            "taxAmtA": flt(category_totals['A']['tax'], 4),
+            "taxAmtB": flt(category_totals['B']['tax'], 4),
+            "taxAmtC1": flt(category_totals['C1']['tax'], 4),
+            "taxAmtC2": flt(category_totals['C2']['tax'], 4),
+            "taxAmtC3": flt(category_totals['C3']['tax'], 4),
+            "taxAmtD": flt(category_totals['D']['tax'], 4),
+            "taxAmtRvat": flt(category_totals['RVAT']['tax'], 4),
+            "taxAmtE": flt(category_totals['E']['tax'], 4),
+            "taxAmtF": flt(category_totals['F']['tax'], 4),
+            "taxAmtIpl1": flt(special_tax_totals['ipl1']['tax'], 4), # Corrected name
+            "taxAmtIpl2": flt(special_tax_totals['ipl2']['tax'], 4), # Corrected name
+            "taxAmtTl": flt(special_tax_totals['tl']['tax'], 4), # Corrected name
+            "taxAmtEcm": flt(special_tax_totals['ecm']['tax'], 4), # Corrected name
+            "taxAmtExeeg": flt(special_tax_totals['exeeg']['tax'], 4), # Corrected name
+            "taxAmtTot": 0.0, # For Turnover Tax, if applicable
+            
+            # Totals
+            "totTaxblAmt": flt(total_taxable_amount, 2), # As per doc (18,2)
+            "totTaxAmt": flt(total_tax_amount, 2), # As per doc (18,2)
+            "totAmt": flt(totals['total_tax_inclusive_amount'], 2), # Total tax-inclusive invoice amount
+            
+            # Other fields
+            "cashDcRt": flt(rvat_data.get("cash_discount_rate", 0.0), 4),
+            "cashDcAmt": flt(rvat_data.get("cash_discount_amount", 0.0), 4),
+            "prchrAcptcYn": "Y", # Assuming "Y" for a new agent sale, as per doc "Yes or No"
+            "remark": rvat_data.get("remarks") or "",
+            "regrId": created_by,
+            "regrNm": created_by,
+            "modrId": created_by,
+            "modrNm": created_by,
+            "saleCtyCd": "1", # As per doc (pass 1)
+            "principalId": "3676521678",
+            "currencyTyCd": currency,
+            "exchangeRt": flt(rvat_data.get("exchange_rate", 1.0), 4),
+            "dbtRsnCd": "", 
+            "invcAdjustReason": "", 
+            "itemList": item_list
+        }
+
+        print("\n--- RVAT Payload Constructed ---", destnCountryCd)
+        print(payload)
+
+        response = self.call_lpo_sale_client(payload)
+        
+        # Fix: Parse the JSON response first, then use .get() on the parsed data
+        try:
+            if hasattr(response, "json"):
+                response_data = response.json()
+            else:
+                # If response doesn't have .json(), it might be a direct dict from mock
+                response_data = response 
+        except Exception as e:
+            frappe.throw(f"Failed to parse response JSON: {e}")
+
+        # Use response_data instead of response for dictionary operations
+        if response_data.get("resultCd") == "000":
+            if response_data.get("data") and response_data["data"].get("rcptNo"):
+                rcpt_no = response_data["data"]["rcptNo"]
+                doc_name = rvat_data.get("name")
+                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=rcpt_no)
+                frappe.msgprint(f"Agent Sale created successfully. Receipt No: {rcpt_no}")
+            else:
+                frappe.msgprint("Agent Sale created successfully but no receipt number was returned.")
+
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            update_stock_item = []
+            update_stock_master = []
+
+            for item in item_list:
+                # Calculate total taxable and tax amounts for this item based on the line item's individual taxable/tax amounts
+                item_total_taxable = item.get("vatTaxblAmt", 0) + item.get("exciseTaxblAmt", 0) + \
+                                    item.get("tlTaxblAmt", 0) + item.get("iplTaxblAmt", 0)
+                item_total_tax = item.get("vatAmt", 0) + item.get("exciseTxAmt", 0) + \
+                                item.get("tlAmt", 0) + item.get("iplAmt", 0)
+                
+                update_stock_item.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"), # This is the gross supply amount from the sales payload
+                    "taxblAmt": flt(item_total_taxable, 4), # Total taxable amount for this line item across all taxes
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": flt(item_total_tax, 4), # Total tax amount for this line item across all taxes
+                    "totAmt": item.get("totAmt"), # Total tax-inclusive amount for this line item
+                    "pkg": item.get("pkg"),
+                    "totDcAmt": item.get("dcAmt", 0),
+                })
+                
+                # Get actual remaining quantity from bins (subtract the sold qty for an agent sale)
+                # This assumes 'actual_qty' refers to available stock that needs to be reduced.
+                bins = frappe.db.get_all("Bin", filters={"item_code": item.get("itemCd")}, fields=["actual_qty"])
+                remaining_qty = sum(flt(b.get("actual_qty", 0)) for b in bins) - item.get("qty", 0)
+                
+                update_stock_master.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": max(0, remaining_qty) # Ensure quantity doesn't go negative
+                })
+
+            # Payload for updating stock after sales (sarTyCd "02" for "Sale")
+            update_stock_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "sarNo": 1, 
+                "orgSarNo": 0, 
+                "regTyCd": "M", 
+                "sarTyCd": "02", 
+                "ocrnDt": ocrnDt,
+                "totItemCnt": payload["totItemCnt"],
+                "totTaxblAmt": payload["totTaxblAmt"],
+                "totTaxAmt": payload["totTaxAmt"],
+                "totAmt": payload["totAmt"],
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_item
+            }
+
+            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
+            print("Update stock response:", call_update_stock_after_purchase)
+            
+            if call_update_stock_after_purchase.get("resultCd") == "000":
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.branch_code,
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master
+                }
+
+                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
+                print("Update stock master response:", call_update_stock_master_after_purchase)
+                
+            else:
+                frappe.throw(f"Failed to update detailed stock: {call_update_stock_after_purchase.get('resultMsg', 'Unknown error')}")
+        else:
+            frappe.throw(f"Failed to create Agent Sale: {response_data.get('resultMsg', 'Unknown error')}")

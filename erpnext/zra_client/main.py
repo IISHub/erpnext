@@ -498,6 +498,34 @@ class ZRAClient:
 
             print("Request Exception:", e)
             raise Exception(f"Server Error\nException: Failed to save import sale\nDetails: {str(e)}")
+        
+
+    def create_lpo_sale_zra_client(self, payload):
+        print("Creating LPO sale payload:", payload)
+        try:
+            response = requests.post(self.sale_url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            print("Results for the response:", result)
+            return response
+
+        except requests.HTTPError as http_err:
+            error_content = ""
+            if http_err.response is not None:
+                try:
+                    error_content = http_err.response.text
+                except Exception:
+                    error_content = "Could not read error response text."
+            
+            print("HTTP Error:", http_err)
+            print("Response content:", error_content)
+            raise Exception(f"Server Error\nException: Failed to save LPO sale\nResponse: {error_content}")
+
+        except requests.RequestException as e:
+            print("Request Exception:", e)
+            raise Exception(f"Server Error\nException: Failed to save LPO sale\nDetails: {str(e)}")
+
+        
 
     def get_principals_zra_client(self, payload):
         try:
