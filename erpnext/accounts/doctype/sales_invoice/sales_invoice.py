@@ -454,15 +454,11 @@ class SalesInvoice(SellingController):
 		is_debit_note = sell_order.get("is_debit_note")
 		is_export = sell_order.get("custom_export")
 		is_lop = sell_order.get("custom__lpo_transaction")
-		is_rvat = sell_order.get("custom_rvat")
-
-		print(sell_order)
-		# frappe.throw("This will always fail for testing LPO logic")
-		
+		is_rvat = sell_order.get("custom_rvat")		
 
 		if is_export:
 			print("Calling the export sale")
-			sale_obj.create_export_sale_invoice(sell_order)
+			sale_obj.create_export_sale_payload(sell_order)
 
 		elif is_rvat:
 			print("calling rvat")
@@ -471,7 +467,7 @@ class SalesInvoice(SellingController):
 
 		elif is_lop == 1:
 			print("******** Creating LPO sale ********")
-			sale_obj.create_lop_sale(sell_order)
+			# sale_obj.create_lop_sale(sell_order)
 
 
 		elif is_debit_note == 1:
