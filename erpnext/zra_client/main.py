@@ -1,3 +1,4 @@
+import threading
 from urllib.parse import quote
 from frappe import throw, _
 from datetime import datetime
@@ -42,6 +43,38 @@ class ZRAClient:
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
+
+    def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
+        def background_task():
+            try:
+                response = self.update_stock_after_purchase(update_stock_payload)
+                if response.get("resultCd") == "000":
+                    print("Stock updated successfully after sale.")
+
+                    create_update_stock_master_payload = {
+                        "tpin": self.tpin,
+                        "bhfId": self.branch_code,
+                        "regrId": created_by,
+                        "regrNm": created_by,
+                        "modrNm": created_by,
+                        "modrId": created_by,
+                        "stockItemList": update_stock_master_items
+                    }
+
+                    print("Preparing stock master update data:", create_update_stock_master_payload)
+                    response = self.update_stock_master_after_purchase(create_update_stock_master_payload)
+                    if response.get("resultCd") == "000":
+                        print("Stock master updated successfully after sale.")
+                    else:
+                        print(f"Failed to update stock master: {response.get('resultMsg')}")
+                else:
+                    print(f"Failed to update stock: {response.get('resultMsg')}")
+            except Exception as e:
+                print(f"Exception in background stock update task: {e}")
+
+        thread = threading.Thread(target=background_task)
+        thread.daemon = True  
+        thread.start()
 
     def get_packaging_unit(self, packaging_name):
 
@@ -414,16 +447,36 @@ class ZRAClient:
 
         
     def save_purchase_manually(self, payload):
-
         try:
-            response = requests.post(self.save_purchase_url, json=payload, timeout=10)
+            response = requests.post(self.save_purchase_url, json=payload, timeout=80)
             response.raise_for_status()
             data = response.json()
+            print("✅ Success Response:", data)
             return data
 
+        except requests.Timeout:
+            error_msg = "The request timed out. The server may be down or too slow to respond."
+            print("Timeout Error:", error_msg)
+            frappe.throw(f"Purchase save failed: {error_msg}")
+
+        except requests.ConnectionError as e:
+            error_msg = f"Connection error: {e}"
+            print("Connection Error:", error_msg)
+            frappe.throw(f"Purchase save failed: {error_msg}")
+
+        except requests.HTTPError as e:
+            try:
+                response_data = e.response.json()
+                error_msg = response_data.get("resultMsg", str(e))
+            except Exception:
+                error_msg = f"HTTP error occurred: {e}"
+            print("HTTP Error Response:", error_msg)
+            frappe.throw(f"Purchase save failed: {error_msg}")
+
         except requests.RequestException as e:
-            frappe.log_error(title="Failed to save purchase", message=str(e))
-            raise Exception(f"Failed to save purchase: {e}")
+            error_msg = f"Unexpected error: {str(e)}"
+            print("RequestException:", error_msg)
+            frappe.throw(f"Purchase save failed: {error_msg}")
 
 
         

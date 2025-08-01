@@ -21,37 +21,7 @@ class zraSales(ZRAClient):
     def __init__(self):
         super().__init__()
 
-    def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
-        def background_task():
-            try:
-                response = self.update_stock_after_purchase(update_stock_payload)
-                if response.get("resultCd") == "000":
-                    print("Stock updated successfully after sale.")
-
-                    create_update_stock_master_payload = {
-                        "tpin": self.tpin,
-                        "bhfId": self.branch_code,
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
-                        "stockItemList": update_stock_master_items
-                    }
-
-                    print("Preparing stock master update data:", create_update_stock_master_payload)
-                    response = self.update_stock_master_after_purchase(create_update_stock_master_payload)
-                    if response.get("resultCd") == "000":
-                        print("Stock master updated successfully after sale.")
-                    else:
-                        print(f"Failed to update stock master: {response.get('resultMsg')}")
-                else:
-                    print(f"Failed to update stock: {response.get('resultMsg')}")
-            except Exception as e:
-                print(f"Exception in background stock update task: {e}")
-
-        thread = threading.Thread(target=background_task)
-        thread.daemon = True  
-        thread.start()
+    
 
     def get_tpin(self):
         return self.tpin

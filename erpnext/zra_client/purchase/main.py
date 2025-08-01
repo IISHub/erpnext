@@ -22,6 +22,7 @@ class zraPurchase(ZRAClient):
         self.save_stock_master(payload)
 
     def create_purchase(self, purchase_data):
+        created_by = purchase_data.get("owner")
         try:
             print("Creating purchase with data:", purchase_data)
 
@@ -203,9 +204,6 @@ class zraPurchase(ZRAClient):
                     "itemList": update_stock_items
                 }
 
-                print("Preparing stock update data:", create_update_stock_payload)
-                self.update_stock_after_purchase(create_update_stock_payload)
-
                 create_update_stock_master_payload = {
                     "tpin": self.get_tpin_number(),
                     "bhfId": self.get_branch_code(),
@@ -216,15 +214,15 @@ class zraPurchase(ZRAClient):
                     "stockItemList": update_stock_master_items
                 }
 
-                print("Preparing stock master update data:", create_update_stock_master_payload)
-                self.update_stock_master_after_purchase(create_update_stock_master_payload)
-
+                self.run_stock_update_in_background(create_update_stock_payload, create_update_stock_master_payload, created_by)
             else:
-                frappe.throw(f"Purchase save failed: {response_data.get('resultMsg')}")
+                print("Purchase save failed. Response:", response_data)
+                error_message = response_data.get("resultMsg", "Unknown error from ZRA API")
+                frappe.throw(f"❌ Purchase save failed: {error_message}")
 
             purchase_data["purchase_payload"] = frappe.as_json(payload)
 
         except requests.RequestException as e:
-            frappe.throw(f"Failed to fetch packaging or unit codes: {str(e)}")
-        except Exception as e:
-            frappe.throw(f"Error creating purchase: {str(e)}")
+            error_msg = response_data.get("resultMsg", "Unknown error")
+            print("Failed Purchase Response:", response_data)
+            frappe.throw(f"❌ Purchase save failed: {error_msg}")
