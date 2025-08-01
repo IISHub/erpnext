@@ -60,11 +60,14 @@ class ZRAClient:
                         "modrId": created_by,
                         "stockItemList": update_stock_master_items
                     }
+                    print(create_update_stock_master_payload)
                     response = self.save_stock_master_zra_client(create_update_stock_master_payload)
+                    print("Response :", response)
                     if response.get("resultCd") == "000":
+                        
                         print("Stock master updated successfully after sale.")
                     else:
-                        print(f"Failed to update stock master: {response.get('resultMsg')}")
+                        print("Failed to update stock master:", response)
                 else:
                     print(f"Failed to update stock: {response.get('resultMsg')}")
             except Exception as e:
@@ -405,32 +408,17 @@ class ZRAClient:
         
 
     def save_stock_master_zra_client(self, payload):
-        print("now calling stock master")
+        print("Now calling stock master")
         try:
             response = requests.post(self.save_stock_master_url, json=payload, timeout=50)
             response.raise_for_status()
-
             data = response.json()
-            status = data.get("status")
-
-            if status == "000":
-                print("✅ Stock master saved successfully.")
-                return data
-            else:
-                error_msg = f"❌ Stock master save failed. Status: {status}, Message: {data.get('message', 'No message')}"
-                frappe.log_error(
-                    title="Failed to save stock master",
-                    message=f"{error_msg}\nPayload: {payload}"
-                )
-                raise Exception(error_msg)
-
+            return data
         except requests.RequestException as e:
             error_msg = f"Request failed for stock master: {str(e)}"
-            frappe.log_error(
-                title="Failed to save stock master",
-                message=f"{error_msg}\nPayload: {payload}"
-            )
-            raise Exception(error_msg)
+            frappe.log_error(title="Stock Master Error", message=error_msg)
+            return {"status": "error", "message": error_msg}
+
 
 
 
