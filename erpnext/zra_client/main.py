@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from frappe import throw, _
 from datetime import datetime
 import requests
@@ -42,11 +43,80 @@ class ZRAClient:
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
 
+    def get_packaging_unit(self, packaging_name):
+
+        if not packaging_name:
+            return None
+            
+        packaging_unit_code = None
+        try:
+            res = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{quote(packaging_name)}/", timeout=10)
+            res.raise_for_status()
+            response_data = res.json()
+            packaging_unit_code = response_data.get("code")
+            print(res)
+            
+            if not packaging_unit_code:
+                frappe.throw(f"Packaging unit code not found for '{packaging_name}' from external API response: {response_data}")
+                
+        except requests.exceptions.Timeout:
+            frappe.throw(f"Timeout fetching packaging unit code for '{packaging_name}'.")
+        except requests.exceptions.RequestException as e:
+            frappe.throw(f"Error fetching packaging unit code for '{packaging_name}' from external API: {e}")
+        except ValueError as e:
+        
+            frappe.throw(f"Invalid JSON response when fetching packaging unit code for '{packaging_name}': {e}")
+
     
+    
+        return packaging_unit_code
+
+    def get_units_of_measure(self, unit_name):
+        if not unit_name:
+            frappe.throw("Unit name cannot be empty.")
+        
+        qtyUnitCd = None
+        
+        try:
+            
+            encoded_unit_name = quote(unit_name)
+            url = f"http://0.0.0.0:7000/unitofmeasure/{encoded_unit_name}/"
+            
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            
+            response_data = res.json()
+            qtyUnitCd = response_data.get("code")
+            
+            if not qtyUnitCd:
+                frappe.throw(f"Unit code not found for '{unit_name}' from external API.")
+                
+        except requests.exceptions.Timeout:
+            frappe.throw(f"Timeout fetching unit code for '{unit_name}'. Please try again.")
+            
+        except requests.exceptions.HTTPError as e:
+            if res.status_code == 404:
+                frappe.throw(f"Unit '{unit_name}' not found in external API.")
+            else:
+                frappe.throw(f"HTTP error {res.status_code} fetching unit code for '{unit_name}': {e}")
+                
+        except requests.exceptions.ConnectionError:
+            frappe.throw(f"Connection error fetching unit code for '{unit_name}'. Please check your network connection.")
+            
+        except requests.exceptions.JSONDecodeError:
+            frappe.throw(f"Invalid JSON response received for unit '{unit_name}' from external API.")
+            
+        except requests.RequestException as e:
+            frappe.throw(f"Error fetching unit code for '{unit_name}' from external API: {e}")
+            
+        except Exception as e:
+            frappe.throw(f"Unexpected error fetching unit code for '{unit_name}': {e}")
+        
+        return qtyUnitCd
 
     def create_item_zra(self, payload):
         try:       
-            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
+            response = requests.post(url=self.create_item_url, json=payload, timeout=70)
             response.raise_for_status() 
             print(response)
             return response.json()
@@ -241,7 +311,7 @@ class ZRAClient:
         print("Sending payload:", payload)
 
         try:
-            response = requests.post(self.update_url, json=payload, timeout=10)
+            response = requests.post(self.update_url, json=payload, timeout=70)
             print("Response status:", response.status_code)
             response.raise_for_status() 
             print(response.json())
@@ -283,7 +353,7 @@ class ZRAClient:
 
         try:
             print("Saving stock payload: ", payload)
-            response = requests.post(self.save_stock_url, json=payload, timeout=10)
+            response = requests.post(self.save_stock_url, json=payload, timeout=70)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:

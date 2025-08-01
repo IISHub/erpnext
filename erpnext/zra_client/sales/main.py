@@ -9,6 +9,7 @@ import threading
 from frappe.utils import flt
 from datetime import datetime
 import frappe
+import threading
 from frappe import get_doc
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.principals.main import Principals
@@ -20,8 +21,41 @@ class zraSales(ZRAClient):
     def __init__(self):
         super().__init__()
 
+    def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
+        def background_task():
+            try:
+                response = self.update_stock_after_purchase(update_stock_payload)
+                if response.get("resultCd") == "000":
+                    print("Stock updated successfully after sale.")
+
+                    create_update_stock_master_payload = {
+                        "tpin": self.tpin,
+                        "bhfId": self.branch_code,
+                        "regrId": created_by,
+                        "regrNm": created_by,
+                        "modrNm": created_by,
+                        "modrId": created_by,
+                        "stockItemList": update_stock_master_items
+                    }
+
+                    print("Preparing stock master update data:", create_update_stock_master_payload)
+                    response = self.update_stock_master_after_purchase(create_update_stock_master_payload)
+                    if response.get("resultCd") == "000":
+                        print("Stock master updated successfully after sale.")
+                    else:
+                        print(f"Failed to update stock master: {response.get('resultMsg')}")
+                else:
+                    print(f"Failed to update stock: {response.get('resultMsg')}")
+            except Exception as e:
+                print(f"Exception in background stock update task: {e}")
+
+        thread = threading.Thread(target=background_task)
+        thread.daemon = True  
+        thread.start()
+
     def get_tpin(self):
         return self.tpin
+    
 
     def get_branch(self):
         return self.branch_code
@@ -469,24 +503,8 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_items
             }
 
-            print("📦 Preparing stock update data:", update_stock_payload)
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
 
-            response = self.update_stock_after_purchase(update_stock_payload)
-            if response.get("resultCd") == "000":
-                print("Stock updated successfully after sale.")
-
-                create_update_stock_master_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.branch_code,
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "stockItemList": update_stock_master_items
-                }
-
-                print("Preparing stock master update data:", create_update_stock_master_payload)
-                response = self.update_stock_master_after_purchase(create_update_stock_master_payload)
 
             frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
         else:
@@ -831,7 +849,7 @@ class zraSales(ZRAClient):
 
             ocrnDt = datetime.now().strftime("%Y%m%d")
             update_stock_item = []
-            update_stock_master = []
+            update_stock_master_items = []
 
             for item in item_list:
                 # Calculate total taxable and tax amounts for this item
@@ -862,7 +880,7 @@ class zraSales(ZRAClient):
                 bins = frappe.db.get_all("Bin", filters={"item_code": item.get("itemCd")}, fields=["actual_qty"])
                 remaining_qty = sum(flt(b.get("actual_qty", 0)) for b in bins) + item.get("qty", 0)
                 
-                update_stock_master.append({
+                update_stock_master_items.append({
                     "itemCd": item.get("itemCd"),
                     "rsdQty": max(0, remaining_qty)
                 })
@@ -886,22 +904,7 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_item
             }
 
-            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
-            print("Update stock response:", call_update_stock_after_purchase)
-            
-            if call_update_stock_after_purchase.get("resultCd") == "000":
-                update_stock_master_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.branch_code,
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "stockItemList": update_stock_master
-                }
-
-                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
-                print("Update stock master response:", call_update_stock_master_after_purchase)
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
                 
         else:
             error_msg = response.get("resultMsg", "Unknown error occurred")
@@ -1248,7 +1251,7 @@ class zraSales(ZRAClient):
 
             ocrnDt = datetime.now().strftime("%Y%m%d")
             update_stock_item = []
-            update_stock_master = []
+            update_stock_master_items = []
 
             for item in item_list:
                 # Calculate total taxable and tax amounts for this item
@@ -1279,7 +1282,7 @@ class zraSales(ZRAClient):
                 bins = frappe.db.get_all("Bin", filters={"item_code": item.get("itemCd")}, fields=["actual_qty"])
                 remaining_qty = sum(flt(b.get("actual_qty", 0)) for b in bins) - item.get("qty", 0)
                 
-                update_stock_master.append({
+                update_stock_master_items.append({
                     "itemCd": item.get("itemCd"),
                     "rsdQty": max(0, remaining_qty)
                 })
@@ -1303,22 +1306,7 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_item
             }
 
-            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
-            print("Update stock response:", call_update_stock_after_purchase)
-            
-            if call_update_stock_after_purchase.get("resultCd") == "000":
-                update_stock_master_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.branch_code,
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "stockItemList": update_stock_master
-                }
-
-                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
-                print("Update stock master response:", call_update_stock_master_after_purchase)
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
                 
         else:
             error_msg = response.get("resultMsg", "Unknown error occurred")
@@ -1330,6 +1318,7 @@ class zraSales(ZRAClient):
         customer_name = export_sale_data.get("customer") or export_sale_data.get("customer_name") or ""
         customer_doc = frappe.get_doc("Customer", customer_name) if customer_name else None
         customer_tpin = customer_doc.get("custom_customer_tpin") if customer_doc else ""
+        
         
         # For export sales, cisInvcNo should be the system's generated invoice number
         cisInvcNo = export_sale_data.get("name", f"EXP-{random.randint(1000,9999)}")
@@ -1425,16 +1414,8 @@ class zraSales(ZRAClient):
             }
             
             # --- VAT Category Validation ---
-            vatCatCd = vat_map.get(vat_doc_cat) 
-            
-            if not vatCatCd:
-                frappe.throw(f"Invalid or missing VAT category '{vat_doc_cat}' configured for item '{item_code}'. Please ensure it is one of the recognized types (e.g., 'Exports', 'StandardRated').")
-            
-            # Second, if it's an export sale, strongly recommend C1
-            # Assuming that if this function `create_export_sale_payload` is called, it IS an export sale.
-            if vatCatCd != "C1":
-                frappe.throw(f"For an Export Sale, item '{item_code}' has VAT category '{vat_doc_cat}' (mapped to '{vatCatCd}'). For export sales, all items should typically be categorized as 'Exports' (C1). Please correct the VAT category for this item.")
-            # --- End VAT Category Validation ---
+            vatCatCd = "C1"
+         
 
             # Excise Tax Mapping
             exciseTxCatCd = ""
@@ -1715,7 +1696,7 @@ class zraSales(ZRAClient):
 
             ocrnDt = datetime.now().strftime("%Y%m%d")
             update_stock_item = []
-            update_stock_master = []
+            update_stock_master_items = []
 
             for item in item_list:
                 # Calculate total taxable and tax amounts for this item based on the line item's individual taxable/tax amounts
@@ -1747,7 +1728,7 @@ class zraSales(ZRAClient):
                 bins = frappe.db.get_all("Bin", filters={"item_code": item.get("itemCd")}, fields=["actual_qty"])
                 remaining_qty = sum(flt(b.get("actual_qty", 0)) for b in bins) - item.get("qty", 0)
                 
-                update_stock_master.append({
+                update_stock_master_items.append({
                     "itemCd": item.get("itemCd"),
                     "rsdQty": max(0, remaining_qty) # Ensure quantity doesn't go negative
                 })
@@ -1772,25 +1753,7 @@ class zraSales(ZRAClient):
                 "itemList": update_stock_item
             }
 
-            call_update_stock_after_purchase = self.update_stock_after_purchase(update_stock_payload)
-            print("Update stock response:", call_update_stock_after_purchase)
-            
-            if call_update_stock_after_purchase.get("resultCd") == "000":
-                update_stock_master_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.branch_code,
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "stockItemList": update_stock_master
-                }
-
-                call_update_stock_master_after_purchase = self.update_stock_master_after_purchase(update_stock_master_payload)
-                print("Update stock master response:", call_update_stock_master_after_purchase)
-                
-            else:
-                frappe.throw(f"Failed to update detailed stock: {call_update_stock_after_purchase.get('resultMsg', 'Unknown error')}")
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
         else:
             frappe.throw(f"Failed to create Export Sale: {response_data.get('resultMsg', 'Unknown error')}")
 
@@ -1800,6 +1763,9 @@ class zraSales(ZRAClient):
         customer_name = lpo_data.get("customer") or lpo_data.get("customer_name") or ""
         customer_doc = frappe.get_doc("Customer", customer_name) if customer_name else None
         customer_tpin = customer_doc.get("custom_customer_tpin") if customer_doc else ""
+        lpo_number = lpo_data.get("custom_lpo_number")
+        if lpo_number is None or not (9 <= len(lpo_number) <= 20):
+            frappe.throw("The LPO Number must be between 9 and 20 characters long.")
         
         # For export sales, cisInvcNo should be the system's generated invoice number
         cisInvcNo = lpo_data.get("name", f"EXP-{random.randint(1000,9999)}")
@@ -1897,19 +1863,20 @@ class zraSales(ZRAClient):
             }
             
             # --- VAT Category Validation ---
-            vatCatCd = vat_map.get(vat_doc_cat) 
+            vatCatCd = "C2"
             
             if not vatCatCd:
                 frappe.throw(f"Invalid or missing VAT category '{vat_doc_cat}' configured for item '{item_code}'. Please ensure it is one of the recognized types (e.g., 'Exports', 'StandardRated').")
             
             # Second, if it's an export sale, strongly recommend C1
             # Assuming that if this function `create_export_sale_payload` is called, it IS an export sale.
-            if vatCatCd != "C2":
+            if vatCatCd not in ["A1", "A", "C2"]:
                 print(vatCatCd)
                 frappe.throw(
                     f"For LPO transactions, the item '{item_code}' has a VAT category of '{vat_doc_cat}' (mapped to '{vatCatCd}'). "
-                    f"Items in LPO transactions should be categorized under 'Exports' (C2). Please correct the VAT category for this item."
+                    f"Items in LPO transactions should be categorized under 'StandardRated' (A1) or 'Exports' (C2). Please correct the VAT category for this item."
                 )
+
 
             # --- End VAT Category Validation ---
 
@@ -2072,11 +2039,10 @@ class zraSales(ZRAClient):
         payload = {
             "tpin": self.tpin,
             "bhfId": self.branch_code,
-            "orgSdcId": "SDC0010002709", # Verify this value or make it configurable
+            "orgSdcId": "SDC0010002709",
             "cisInvcNo": cisInvcNo,
-            "orgInvcNo": 0, # Will be None for a new export sale
+            "orgInvcNo": 0, 
             "custTpin": "1002328764",
-            "custNm": customer_name,
             "salesTyCd": "N", 
             "rcptTyCd": "S",  
             "pmtTyCd": lpo_data.get("payment_type_code", "01"), 
@@ -2155,8 +2121,8 @@ class zraSales(ZRAClient):
             "regrNm": created_by,
             "modrId": created_by,
             "modrNm": created_by,
-            "saleCtyCd": "1", # As per doc (pass 1)
-            "lpoNumber": "3676521678",
+            "saleCtyCd": "1", 
+            "lpoNumber": lpo_number,
             "currencyTyCd": currency,
             "exchangeRt": flt(lpo_data.get("exchange_rate", 1.0), 4),
             "dbtRsnCd": "", 
@@ -2268,7 +2234,7 @@ class zraSales(ZRAClient):
             else:
                 frappe.throw(f"Failed to update detailed stock: {call_update_stock_after_purchase.get('resultMsg', 'Unknown error')}")
         else:
-            frappe.throw(f"Failed to create Export Sale: {response_data.get('resultMsg', 'Unknown error')}")
+            frappe.throw(f"{response_data.get('resultMsg', 'Unknown error').replace('Request parameter error: ', '')}")
 
     def get_principal(self):
 
