@@ -2,7 +2,13 @@ import requests
 from erpnext.zra_client.main import ZRAClient
 import frappe
 from frappe.utils import flt
+from datetime import datetime
 
+# Get today's date
+today = datetime.today()
+
+# Format it as YYYYMMDD
+ocrnDt = today.strftime("%Y%m%d")
 class Stock(ZRAClient):
     def __init__(self):
         super().__init__()
@@ -14,6 +20,7 @@ class Stock(ZRAClient):
         return self.branch_code
 
     def create_stock(self, stock_data):
+        created_by = stock_data.get("owner")
         print("Creating stock with data:", stock_data)
         if not isinstance(stock_data, dict):
             frappe.throw("Invalid input: stock_data must be a dictionary")
@@ -21,6 +28,8 @@ class Stock(ZRAClient):
         total_taxable = 0
         total_tax = 0
         total_amount = 0
+        ocrnDt = datetime.now().strftime("%Y%m%d")
+
 
         items = stock_data.get("items", [])
         if not items:
@@ -36,7 +45,7 @@ class Stock(ZRAClient):
             "custNm": None,
             "custBhfId": None,
             "sarTyCd": "02",
-            "ocrnDt": stock_data.get("posting_date", "").replace("-", "") if stock_data.get("posting_date") else None,
+            "ocrnDt": ocrnDt,
             "totItemCnt": len(items),
             "remark": stock_data.get("remarks"),
             "regrId": stock_data.get("owner"),
@@ -99,14 +108,17 @@ class Stock(ZRAClient):
             total_taxable += taxable_amount
             total_tax += tax_amount
             total_amount += total_item_amount
+            packaging_unit_name = item_doc.get("custom_packaging_unit_code") or "PKG"
+            unit_of_measure_name = item_doc.get("custom_units_of_measure") or "EA"
+            print(packaging_unit_name, unit_of_measure_name)
 
             payload["itemList"].append({
                 "itemSeq": idx,
                 "itemCd": item_code,
                 "itemClsCd": item_doc.get("item_class_code") or "NA",
                 "itemNm": item_doc.item_name,
-                "pkgUnitCd": item_doc.get("custom_packaging_unit_code") or "PKG",
-                "qtyUnitCd": item_doc.get("custom_units_of_measure") or "EA",
+                "pkgUnitCd": self.get_packaging_unit(packaging_unit_name),
+                "qtyUnitCd": self.get_units_of_measure(unit_of_measure_name),
                 "vatCatCd": vatCatCd,
                 "qty": qty,
                 "prc": valuation_rate,
@@ -118,53 +130,28 @@ class Stock(ZRAClient):
                 "pkg": 1
             })
 
-        payload.update({
-            "totTaxblAmt": total_taxable,
-            "totTaxAmt": total_tax,
-            "totAmt": total_amount
-        })
+            payload.update({
+                "totTaxblAmt": total_taxable,
+                "totTaxAmt": total_tax,
+                "totAmt": total_amount
+            })
 
+            update_stock_master_payload = {
+                "tpin": payload.get("tpin"),
+                "regrId": payload.get("regrId"),
+                "regrNm": payload.get("regrNm"),
+                "bhfId": payload.get("bhfId"),
+                "modrId": payload.get("modrId"),
+                "modrNm": payload.get("modrNm"),
+                "stockItemList": [
+                    {
+                        "itemCd": payload["itemList"][0]["itemCd"],
+                        "rsdQty": 12
+                    }
+                ]
+            }
 
+            print("update stock: ", payload, "stock master payload: ", update_stock_master_payload)
+            self.run_stock_update_in_background(payload, update_stock_master_payload, created_by)
+            # frappe.throw(f"Error")
 
-        try:
-            response = self.save_stock(payload)  
-       
-
-            if isinstance(response, dict) and response.get("resultCd") == "000":
-                update_stock_master_payload = {
-                    "tpin": payload.get("tpin"),
-                    "regrId": payload.get("regrId"),
-                    "regrNm": payload.get("regrNm"),
-                    "bhfId": payload.get("bhfId"),
-                    "modrId": payload.get("modrId"),
-                    "modrNm": payload.get("modrNm"),
-                    "stockItemList": [
-                        {
-                            "itemCd": payload["itemList"][0]["itemCd"],
-                            "rsdQty": 12
-                        }
-                    ]
-                }
-
-        
-                print("Update stock master payload: ", update_stock_master_payload)
-          
-
-                update_stock_master_response = self.update_stock_master(update_stock_master_payload)
-
-            else:
-                frappe.throw(f"ZRA returned error: {response.get('resultMsg') if isinstance(response, dict) else response}")
-
-        except Exception as e:
-            frappe.log_error(title="ZRA Save Stock Failed", message=str(e))
-            frappe.throw(f"ZRA Error: {e}")
-
-    def update_stock_master(self, update_stock_master_payload):
-  
-        try:
-            save_stock_master = self.save_stock_master(update_stock_master_payload)
-            return save_stock_master
-        except Exception as e:
-            frappe.log_error(title=" Failed to update stock master", message=str(e))
-            print(f"Exception in update_stock_master: {e}")
-            return None

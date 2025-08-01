@@ -47,7 +47,7 @@ class ZRAClient:
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
         def background_task():
             try:
-                response = self.update_stock_after_purchase(update_stock_payload)
+                response = self.update_stock_zra_client(update_stock_payload)
                 if response.get("resultCd") == "000":
                     print("Stock updated successfully after sale.")
 
@@ -60,9 +60,7 @@ class ZRAClient:
                         "modrId": created_by,
                         "stockItemList": update_stock_master_items
                     }
-
-                    print("Preparing stock master update data:", create_update_stock_master_payload)
-                    response = self.update_stock_master_after_purchase(create_update_stock_master_payload)
+                    response = self.save_stock_master_zra_client(create_update_stock_master_payload)
                     if response.get("resultCd") == "000":
                         print("Stock master updated successfully after sale.")
                     else:
@@ -392,7 +390,7 @@ class ZRAClient:
         except requests.RequestException as e:
             raise Exception(f"Failed to save stock in ZRA: {e}")
 
-    def update_stock_after_purchase_view(self, payload=None):
+    def update_stock_zra_client(self, payload=None):
         if payload is None:
             frappe.throw("Payload is required to update stock after purchase")
 
@@ -406,27 +404,25 @@ class ZRAClient:
             raise Exception(f"Failed to update stock after purchase in ZRA: {e}")
         
 
-    def save_stock_master(self, payload):
+    def save_stock_master_zra_client(self, payload):
+        print("now calling stock master")
         try:
-        
-
-            response = requests.post(
-                self.save_stock_master_url,
-                json=payload,
-                timeout=50
-            )
-
-
-            frappe.logger().info(
-                f"Stock Master Request: {payload}\n"
-                f"Response [{response.status_code}]: {response.text}"
-            )
-
+            response = requests.post(self.save_stock_master_url, json=payload, timeout=50)
             response.raise_for_status()
-            print("Stock master response:", response.text)
-            return response.json()
-        
-           
+
+            data = response.json()
+            status = data.get("status")
+
+            if status == "000":
+                print("✅ Stock master saved successfully.")
+                return data
+            else:
+                error_msg = f"❌ Stock master save failed. Status: {status}, Message: {data.get('message', 'No message')}"
+                frappe.log_error(
+                    title="Failed to save stock master",
+                    message=f"{error_msg}\nPayload: {payload}"
+                )
+                raise Exception(error_msg)
 
         except requests.RequestException as e:
             error_msg = f"Request failed for stock master: {str(e)}"
@@ -436,13 +432,7 @@ class ZRAClient:
             )
             raise Exception(error_msg)
 
-        except ValueError as e:
-            error_msg = f"Invalid response for stock master: {str(e)}"
-            frappe.log_error(
-                title="Stock Master Response Error",
-                message=error_msg
-            )
-            raise Exception(error_msg)
+
 
 
         
