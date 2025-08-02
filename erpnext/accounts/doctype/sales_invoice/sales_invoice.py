@@ -2,7 +2,7 @@
 # License: GNU General Public License v3. See license.txt
 
 
-from erpnext.zra_client.sales.main import zraSales
+from erpnext.zra_client.sales.main import NormaSale
 import frappe
 import frappe.utils
 from frappe import _, msgprint, throw
@@ -49,6 +49,7 @@ from erpnext.controllers.selling_controller import SellingController
 from erpnext.projects.doctype.timesheet.timesheet import get_projectwise_timesheet_data
 from erpnext.setup.doctype.company.company import update_company_current_month_sales
 from erpnext.stock.doctype.delivery_note.delivery_note import update_billed_amount_based_on_so
+
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
 
@@ -448,7 +449,8 @@ class SalesInvoice(SellingController):
 
 	def on_submit(self):
 		sell_order = self.as_dict()
-		sale_obj = zraSales()
+		# sale_obj = NormaSale()
+		# sale_obj.send_sale_data(sell_order)
 
 		is_return = sell_order.get("is_return")
 		is_debit_note = sell_order.get("is_debit_note")
@@ -460,31 +462,32 @@ class SalesInvoice(SellingController):
 		print(sell_order)
 		
 
-		if is_export:
-			print("Calling the export sale")
-			print(sell_order)
-			sale_obj.create_export_sale_payload(sell_order)
+		# if is_export:
+		# 	print("Calling the export sale")
+		# 	print(sell_order)
+		# 	sale_obj.create_export_sale_payload(sell_order)
 
-		elif is_rvat:
-			print("calling rvat")
-			sale_obj.create_rvat_with_agent_sale(sell_order)
+		# elif is_rvat:
+		# 	print("calling rvat")
+		# 	sale_obj.create_rvat_with_agent_sale(sell_order)
 
 
-		elif is_lop == 1:
-			print("******** Creating LPO sale ********")
-			sale_obj.create_lpo_sale_transaction_payload(sell_order)
+		# elif is_lop == 1:
+		# 	print("******** Creating LPO sale ********")
+		# 	sale_obj.create_lpo_sale_transaction_payload(sell_order)
 
-		elif is_debit_note == 1:
-			print("**** Calling debit sale ***")
-			sale_obj.create_debit_note_payload(sell_order)
+		# elif is_debit_note == 1:
+		# 	print("**** Calling debit sale ***")
+		# 	sale_obj.create_debit_note_payload(sell_order)
 
-		elif is_return == 1:
-			print("**** Credit sale ****:", sell_order)
-			sale_obj.create_credit_note_payload(sell_order)
+		# elif is_return == 1:
+		# 	print("**** Credit sale ****:", sell_order)
+		# 	sale_obj.create_credit_note_payload(sell_order)
 
-		else:
-			print("**** Normal sale ****:", sell_order)
-			sale_obj.create_sale_normal(sell_order)
+		# else:
+		# 	print("**** Normal sale ****:", sell_order)
+		normal_sale_obj = NormaSale()
+		normal_sale_obj.send_sale_data(sell_order)
 
 		self.validate_pos_paid_amount()
 

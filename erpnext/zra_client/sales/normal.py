@@ -1,6 +1,6 @@
 from erpnext.zra_client.main import ZRAClient
 import os
-import frappe
+
 import json
 import random
 from datetime import datetime
@@ -14,7 +14,7 @@ class NormaSale(ZRAClient):
         super().__init__()
 
     def create_normal_sale_helper(self, payload):
-        return self.normal_sale(payload)
+        self.normal_sale(payload)
 
     TAX_RATES = {
         "A": 16, "B": 16, "C1": 0, "C2": 0, "C3": 0,
@@ -84,7 +84,7 @@ class NormaSale(ZRAClient):
             "totAmt": supply_amount
         }
 
-    def build_payload(self, items, base_data):
+    def build_payload(self, items):
         print("\n[BUILD PAYLOAD] Processing items...")
         processed_items = []
 
@@ -151,12 +151,12 @@ class NormaSale(ZRAClient):
         total_amount = round(total_taxable_amount + total_tax_amount, 2)
 
         payload = {
-            "tpin": self.get_tpin(),
-            "bhfId": self.get_branch_code(),
+            "tpin": "2484778002",
+            "bhfId": "000",
             "orgInvcNo": 0,
             "cisInvcNo": self.generate_cis_invc_no(),
             "custTpin": "2000000000",
-            "custNm": base_data["cust_name"],
+            "custNm": "Smart Customer",
             "salesTyCd": "N",
             "rcptTyCd": "S",
             "pmtTyCd": "01",
@@ -178,13 +178,12 @@ class NormaSale(ZRAClient):
             "modrNm": "admin",
             "saleCtyCd": "1",
             "lpoNumber": None,
-            "currencyTyCd": "ZMW",
-            "exchangeRt": "1",
+            "currencyTyCd": "USD",
+            "exchangeRt": "23",
             "dbtRsnCd": "",
             "invcAdjustReason": "",
             "itemList": processed_items
         }
-        self.to_use_data = payload
 
         print(json.dumps(payload, indent=4))
         return payload
@@ -200,143 +199,24 @@ class NormaSale(ZRAClient):
             f"taxAmt{k}": round(self.tax_amt_totals.get(k, 0.0), 2)
             for k in self.TAX_RATES
         }
-    
-    def send_sale_data(self, sell_data):
-        customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
-        customer_doc = frappe.get_doc("Customer", customer_name)
-        customer_tpin = customer_doc.get("custom_customer_tpin") or ""
 
-
-        sell_data_item = sell_data.get("items")
-        items = []
-        for item in sell_data_item:
-
-            itemCd = item.get("item_code")
-            item_doc = frappe.get_doc("Item", itemCd)
-            formatted_items = item_doc.as_dict()
-            package_unit_code = formatted_items.get("custom_packaging_unit_code")
-            unit_of_measure = formatted_items.get("custom_units_of_measure")
-            get_ipl_name = item.get("custom_ipl")
-            get_tl_name = item.get("custom_tl")
-            get_excise_name = item.get("custom_excise")
-            get_turn_over_tax = item.get("custom_tot")
-            get_vat_name = item.get("custom_test")
-
-    
-            vat_tax_types = {
-                "A": "Standard Rated 16%",
-                "B": "Minimum Taxable Value (MTV)",
-                "C1": "Exports 0%",               
-                "C4": "RVAT Reverse VAT",           
-                "C2": "Zero-rating Local Purchases Order transactions",
-                "C3": "Zero-rated by nature",
-                "D": "Disbursement",
-                "E": "Insurance",
-                "IPL1": "Premium Levy",
-            }
-            vatCd = next((key for key, value in vat_tax_types.items() if value == get_vat_name), None)
-
-
-            print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
-            itemName = item.get("item_name")
-
-            
-        
-            qty = item.get("qty")
-
-            items.append({
-                "itemCd": itemCd,
-                "itemClsCd": "50101101",         
-                "itemNm": itemName,
-                "qty": qty,
+    def send_sale_data(self):
+        items = [
+            {
+                "itemCd": "40021",
+                "itemClsCd": "50101101",
+                "itemNm": "Test Item C1",
+                "qty": 1.0,
                 "prc": 100.00,
-                "pkgUnitCd": self.get_packaging_unit(package_unit_code),
-                "qtyUnitCd": self.get_units_of_measure(unit_of_measure),                
-                "vatCatCd": vatCd,                
+                "vatCatCd": "A",
                 "iplCatCd": None,
                 "tlCatCd": None,
                 "exciseTxCatCd": None
-            })
-
-        base_data = {
-            "cust_name": customer_name,
-            "cust_tpin": customer_tpin
-        }
-
-        print("\n[START] Sending sale data...")
-        payload = self.build_payload(items, base_data)
-        response = self.create_normal_sale_helper(payload)
-        
-        if response.get("resultCd") == "000":
-            get_rcpt_no = response.get("data", {}).get("rcptNo")
-            get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
-            print("Stock master updated successfully after sale.")
-            doc_name = sell_data.get("name")
-            self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no, qrcode_url=get_qrcode_url)
-            created_by = sell_data.get("owner")
-
-            print("This prints immediately, before delayed print")
-            ocrnDt = datetime.now().strftime("%Y%m%d")
-            print(self.to_use_data)
-
-            update_stock_items = []
-            update_stock_master_items = []
-
-                
-                
-            for item in self.to_use_data.get("itemList", []):
-                update_stock_items.append({
-                    "itemSeq": item.get("itemSeq"),
-                    "itemCd": item.get("itemCd"),
-                    "itemClsCd": item.get("itemClsCd"),
-                    "itemNm": item.get("itemNm"),
-                    "pkgUnitCd": item.get("pkgUnitCd"),
-                    "qtyUnitCd": item.get("qtyUnitCd"),
-                    "qty": item.get("qty"),
-                    "prc": item.get("prc"),
-                    "splyAmt": item.get("splyAmt"),
-                    "taxblAmt": item.get("vatTaxblAmt"), 
-                    "vatCatCd": item.get("vatCatCd"),
-                    "taxAmt": item.get("vatAmt"),
-                    "totAmt": item.get("totAmt"),
-                    "pkg": item.get("pkg", 1),
-                    "totDcAmt": item.get("dcAmt", 0),
-                })
-
-                remaining_qty = 12  
-                update_stock_master_items.append({
-                    "itemCd": item.get("itemCd"),
-                    "rsdQty": max(0, remaining_qty)
-                })
-
-
-            update_stock_payload = {
-                "tpin": self.tpin,
-                "bhfId": self.branch_code,
-                "sarNo": 1,
-                "orgSarNo": 0,
-                "regTyCd": "M",
-                "sarTyCd": "02",
-                "ocrnDt": ocrnDt,
-                "totItemCnt": self.to_use_data['totItemCnt'],
-                "totTaxblAmt": self.to_use_data['totTaxblAmt'],
-                "totTaxAmt": self.to_use_data['totTaxAmt'],
-                "totAmt": self.to_use_data['totAmt'],
-                "regrId": created_by,
-                "regrNm": created_by,
-                "modrNm": created_by,
-                "modrId": created_by,
-                "itemList": update_stock_items
             }
-
-            print(update_stock_payload, update_stock_master_items)
-            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
-
-
-            frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
-        else:
-            frappe.throw(f"Sale save failed: {response.get('resultMsg')}")
-
+        ]
+        print("\n[START] Sending sale data...")
+        payload = self.build_payload(items)
+        self.create_normal_sale_helper(payload)
 
 
 

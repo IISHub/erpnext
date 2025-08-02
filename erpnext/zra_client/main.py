@@ -1,4 +1,5 @@
 import threading
+import time
 from urllib.parse import quote
 from frappe import throw, _
 from datetime import datetime
@@ -44,6 +45,37 @@ class ZRAClient:
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
 
+    def get_tpin(self):
+        return self.tpin
+
+    def get_branch_code(self):
+        return self.branch_code
+    
+    def update_rcptNo_delayed(self, docname, rcpt_no, qrcode_url,delay=10):
+        def worker():
+            try:
+                print(f"⏳ Received rcptNo: {rcpt_no}. Waiting {delay} seconds before updating...")
+                time.sleep(delay)
+
+                url = "http://0.0.0.0:7000/api/update_rcpt/" 
+                payload = { 
+                    "docname": docname,
+                    "rcpt_no": rcpt_no,
+                    "qrcode_url": qrcode_url
+                }
+                headers = {'Content-Type': 'application/json'}
+                response = requests.post(url, json=payload, headers=headers)
+
+                if response.status_code == 200:
+                    print(f"rcptNo '{rcpt_no}' updated for {docname} via API")
+                else:
+                    print(f"Failed to update rcptNo via API: {response.text}")
+
+            except Exception as e:
+                print(f" Error calling API to update rcptNo: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+    
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
         def background_task():
             try:
