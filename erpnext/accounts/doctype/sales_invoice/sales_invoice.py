@@ -2,7 +2,7 @@
 # License: GNU General Public License v3. See license.txt
 
 
-from erpnext.zra_client.sales.main import NormaSale, CreditNote
+from erpnext.zra_client.sales.main import NormaSale, CreditNote, DebitNote
 import frappe
 import frappe.utils
 from frappe import _, msgprint, throw
@@ -476,14 +476,16 @@ class SalesInvoice(SellingController):
 		# 	print("******** Creating LPO sale ********")
 		# 	sale_obj.create_lpo_sale_transaction_payload(sell_order)
 
-		# elif is_debit_note == 1:
-		# 	print("**** Calling debit sale ***")
-		# 	sale_obj.create_debit_note_payload(sell_order)
+
 
 		if is_return == 1:
 			print("**** Credit sale ****:", sell_order)
 			credit_note_obj = CreditNote()
 			credit_note_obj.send_credit_sale_data(sell_order)
+
+		elif is_debit_note == 1:
+			credit_debit_note_obj = DebitNote()
+			credit_debit_note_obj.send_debit_sale_data(sell_order)
 
 		else:
 			print("**** Normal sale ****:", sell_order)
