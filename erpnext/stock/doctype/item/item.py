@@ -341,7 +341,7 @@ class Item(Document):
 			if raw_opening_stock is not None and str(raw_opening_stock).strip() != "":
 				opening_stock = float(raw_opening_stock)
 		except ValueError:
-			frappe.throw("🚫 Invalid opening_stock value. Must be a number.")
+			frappe.throw("Invalid opening_stock value. Must be a number.")
 
 		# default_price
 		default_price = 0.0

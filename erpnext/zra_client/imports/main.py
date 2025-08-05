@@ -69,7 +69,7 @@ class Imports(ZRAClient):
 
 
         if response.get("resultCd") not in ["000", "001"]:
-            throw(_(f"ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
+            frappe.throw(_(f"ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
 
     
         self.update_stock_master()
