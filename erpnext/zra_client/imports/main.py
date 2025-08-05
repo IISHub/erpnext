@@ -17,7 +17,7 @@ class Imports(ZRAClient):
         return self.zra_client_update_import(payload)
 
     def update_import(self, import_data):
-        print("📦 Import data received:", import_data)
+        print("Import data received:", import_data)
 
     
         taskCd = import_data.get("custom_task_cd")
@@ -39,10 +39,10 @@ class Imports(ZRAClient):
             itemClsCd = data.get("itemClsCd")
 
             if not itemClsCd:
-                throw(_(f"❌ itemClsCd not found for '{get_class_code}'"))
+                throw(_(f"itemClsCd not found for '{get_class_code}'"))
 
         except requests.RequestException as e:
-            throw(_(f"🔌 Error fetching item class code: {e}"))
+            throw(_(f"Error fetching item class code: {e}"))
 
         payload = {
             "tpin": self.get_tpin(),
@@ -63,19 +63,19 @@ class Imports(ZRAClient):
             ]
         }
 
-        print("🚀 Payload to send to ZRA:", payload)
+        print("Payload to send to ZRA:", payload)
 
         response = self.call_update_import(payload)
 
 
         if response.get("resultCd") not in ["000", "001"]:
-            throw(_(f"🚫 ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
+            throw(_(f"ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
 
     
         self.update_stock_master()
 
     def update_stock(self):
-        print("📦 Updating stock...")
+        print("Updating stock...")
 
     def update_stock_master(self):
-        print("📦 Updating stock master...")
+        print("Updating stock master...")

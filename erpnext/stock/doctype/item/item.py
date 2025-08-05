@@ -452,18 +452,18 @@ class Item(Document):
 
 	def on_update(self):
 		if not getattr(self.flags, "_just_inserted", False):
-			# print("****validating")
-			# data = self.as_dict()
+			print("****validating")
+			data = self.as_dict()
 
-			# if data.get("custom_task_cd") or data.get("custom_dcl__de"):
-			# 	import_obj = Imports()
-			# 	import_obj.update_import(data)
-			# else:
-			# 	zra_obj = ZRAClient()
-			# 	print(data)
-			# 	zra_obj.update_item(**data)
+			if data.get("custom_task_cd") or data.get("custom_dcl__de"):
+				import_obj = Imports()
+				import_obj.update_import(data)
+			else:
+				zra_obj = ZRAClient()
+				print(data)
+				zra_obj.update_item(**data)
 
-			# print("************* Updating existing item ***********")
+			print("************* Updating existing item ***********")
 
 			self.update_variants()
 			self.update_item_price()

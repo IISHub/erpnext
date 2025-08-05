@@ -50,11 +50,25 @@ class ZRAClient:
 
     def get_branch_code(self):
         return self.branch_code
+
+    def update_item_in_background(self, update_url, payload):
+        def task():
+            try:
+                response = requests.post(update_url, json=payload, timeout=70)
+                print("Response status:", response.status_code)
+                response.raise_for_status()
+                print(response.json())
+            except requests.exceptions.RequestException as e:
+                frappe.log_error(title="ZRA Update Error", message=str(e))
+            except ValueError:
+                frappe.log_error(title="ZRA Invalid JSON", message="Invalid JSON response from ZRA API during item update.")
+
+        threading.Thread(target=task).start()
     
     def update_rcptNo_delayed(self, docname, rcpt_no, qrcode_url,delay=10):
         def worker():
             try:
-                print(f"⏳ Received rcptNo: {rcpt_no}. Waiting {delay} seconds before updating...")
+                print(f"Received rcptNo: {rcpt_no}. Waiting {delay} seconds before updating...")
                 time.sleep(delay)
 
                 url = "http://0.0.0.0:7000/api/update_rcpt/" 
@@ -376,16 +390,8 @@ class ZRAClient:
 
         print("Sending payload:", payload)
 
-        try:
-            response = requests.post(self.update_url, json=payload, timeout=70)
-            print("Response status:", response.status_code)
-            response.raise_for_status() 
-            print(response.json())
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to update item in ZRA due to network or API error: {e}")
-        except ValueError:
-            frappe.throw(f"Invalid JSON response from ZRA API during item update.")
+        self.update_item_in_background(self.update_url, payload)
+
 
 
     def save_stock(self, payload=None):
