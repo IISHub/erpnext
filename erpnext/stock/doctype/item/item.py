@@ -455,6 +455,7 @@ class Item(Document):
 			print("****validating")
 			data = self.as_dict()
 
+			print("** updating import item ***")
 			if data.get("custom_task_cd") or data.get("custom_dcl__de"):
 				import_obj = Imports()
 				import_obj.update_import(data)

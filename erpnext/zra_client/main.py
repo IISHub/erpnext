@@ -587,19 +587,32 @@ class ZRAClient:
             raise Exception(f"Failed to normal sale: {e}")
 
     
+ 
     def zra_client_update_import(self, payload):
-        
-        response = requests.post(self.update_import_url, json=payload, timeout=10)
-        response.raise_for_status()
-        result = response.json()
-        print(result)
+        try:
+            response = requests.post(self.update_import_url, json=payload, timeout=10)
+            response.raise_for_status() 
+            result = response.json()
+            print(result)
 
-        if result.get("resultCd") in ["000", "001"]:
-            print("Import update successful.")
-        else:
-            frappe.throw(_("ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
+            if result.get("resultCd") in ["000", "001"]:
+                print("Import update successful.")
+            else:
+                frappe.throw(_("ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
 
-        return result
+            return result
+
+        except requests.exceptions.Timeout:
+            frappe.throw(_("Request to ZRA timed out. Please try again later."))
+
+        except requests.exceptions.HTTPError as http_err:
+            frappe.throw(_("HTTP error occurred: {0}").format(str(http_err)))
+
+        except requests.exceptions.RequestException as req_err:
+            frappe.throw(_("An error occurred while connecting to ZRA: {0}").format(str(req_err)))
+
+        except ValueError:
+            frappe.throw(_("Invalid response received from ZRA (not JSON)."))
     
     def save_item_composition_zra_client(self, payload):
         try:
