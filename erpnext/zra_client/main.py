@@ -464,7 +464,7 @@ class ZRAClient:
         
     def save_purchase_manually(self, payload):
         try:
-            response = requests.post(self.save_purchase_url, json=payload, timeout=80)
+            response = requests.post(self.save_purchase_url, json=payload, timeout=60)
             response.raise_for_status()
             data = response.json()
             print("✅ Success Response:", data)

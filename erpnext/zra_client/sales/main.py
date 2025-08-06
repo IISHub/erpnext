@@ -146,9 +146,13 @@ class NormaSale(ZRAClient):
 
             processed_items.append(processed_item)
 
-        total_taxable_amount = sum(self.taxbl_totals.values())
-        total_tax_amount = sum(self.tax_amt_totals.values())
-        total_amount = round(total_taxable_amount + total_tax_amount, 2)
+        total_taxable_amount = round(sum(item["vatTaxblAmt"] for item in processed_items), 2)
+        total_tax_amount = round(sum(
+            item["vatAmt"] + item["iplAmt"] + item["tlAmt"] + item["ecmAmt"]
+            for item in processed_items
+        ), 2)
+        total_amount = round(sum(item["totAmt"] for item in processed_items), 2)
+
 
         payload = {
             "tpin": self.get_tpin(),
@@ -250,6 +254,11 @@ class NormaSale(ZRAClient):
             vatCd = next((key for key, value in vat_tax_types.items() if value == get_vat_name), None)
             iplCd = next((key for key, value in iplCat.items() if value == get_ipl_name), None)
             tlCd = next((key for key, value in tlCat.items() if value == get_tl_name), None)
+
+            if iplCd is not None and (vatCd is not None or tlCd is not None):
+                frappe.throw(
+                    f"[ZRA Error] IPL transactions (iplCd) must not be combined with VAT or TL. Found: vatCd={vatCd}, tlCd={tlCd}"
+                )
 
             present_codes = [code for code in [vatCd, iplCd, tlCd] if code is not None]
             if len(present_codes) != 1:
