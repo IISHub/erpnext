@@ -595,11 +595,13 @@ class ZRAClient:
             result = response.json()
             print(result)
 
-            if result.get("resultCd") in ["000", "001"]:
-                print("Import update successful.")
+            if result.get("resultCd") == "000":
+                return response
+            elif result.get("resultCd") == "001":
+                frappe.throw("There is no search result")
+                
             else:
                 frappe.throw(_("ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
-
             return result
 
         except requests.exceptions.Timeout:

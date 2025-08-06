@@ -744,13 +744,11 @@ class PurchaseInvoice(BuyingController):
 		purchase_obj = zraPurchase()
 		purchase_data = self.as_dict()
 		purchase_invoice_name = purchase_data.get("name")
-
-		if purchase_invoice_name.startswith("IMPORT"):
-			return
-		else:
+		if purchase_invoice_name.startswith("SMART-INVOICE-PURCHASE"):
 			purchase_obj.create_purchase(purchase_data)
+		else:
+			pass
 
-	
 		self.check_prev_docstatus()
 
 		if self.is_return and not self.update_billed_amount_in_purchase_order:

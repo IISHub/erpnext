@@ -24,132 +24,59 @@ class zraPurchase(ZRAClient):
     def create_purchase(self, purchase_data):
         created_by = purchase_data.get("owner")
         try:
-            print("Creating purchase with data:", purchase_data)
-
-            vat_map = {
-                "StandardRated": "A",
-                "MinimumTaxableValue": "B",
-                "Exports": "C1",
-                "ZeroRatingLocalPurchases": "C2",
-                "ZeroRatedByNature": "C3",
-                "Exempt": "D",
-                "Disbursement": "E",
-                "ServiceCharge10%": "F",
-                "ReverseVAT": "RVAT"
-            }
-
-            # Prepare totals
-            total_taxable_amount = 0.0
-            total_tax_amount = 0.0
-            total_amount = 0.0
-
-            payload = {
-                "tpin": self.get_tpin_number(),
-                "bhfId": self.get_branch_code(),
-                "cisInvcNo": purchase_data.get("name"),
+            payload ={
+                "tpin": "2484778002",
+                "bhfId": "000",
+                "cisInvcNo": "CIS134",
                 "regTyCd": "M",
                 "pchsTyCd": "N",
                 "rcptTyCd": "P",
                 "pmtTyCd": "01",
                 "pchsSttsCd": "02",
-                "cfmDt": frappe.utils.now_datetime().strftime("%Y%m%d%H%M%S"),
-                "pchsDt": frappe.utils.now_datetime().strftime("%Y%m%d"),
+                "cfmDt": "20250716140000",
+                "pchsDt": "20250716",
                 "cnclReqDt": "",
                 "cnclDt": "",
-                "totItemCnt": len(purchase_data.get("items", [])),
-                "totTaxblAmt": 0.0,  # to be updated later
-                "totTaxAmt": 0.0,    # to be updated later
-                "totAmt": 0.0,       # to be updated later
-                "remark": "Auto from ERP",
-                "regrNm": purchase_data.get("owner"),
-                "regrId": purchase_data.get("owner"),
-                "modrNm": purchase_data.get("owner"),
-                "modrId": purchase_data.get("owner"),
-                "itemList": []
-            }
-
-            for idx, item in enumerate(purchase_data.get("items", [])):
-                print(f"\nProcessing item #{idx + 1}")
-                item_code = item.get("item_code")
-                item_name = item.get("item_name")
-                item_qty = flt(item.get("qty") or 0)
-                item_rate = flt(item.get("rate") or 0)
-                item_amount = flt(item.get("amount") or 0)
-
-                item_doc = frappe.get_doc("Item", item_code)
-
-                # Get VAT tax type from item custom field, map it, default to A
-                vat_doc_cat = item_doc.get("custom_vat", "").strip()
-                taxTyCd = vat_map.get(vat_doc_cat, "A")
-
-                # # Throw exception if taxTyCd is not "A"
-                # if taxTyCd != "A":
-                #     frappe.throw(
-                #         f"Invalid tax type for item {item_code} ({item_name}). "
-                #         f"Only tax type 'A' is allowed for URCAS purchases, but got '{taxTyCd}'."
-                #     )
-
-                # Get packaging unit code via API
-                get_packaging_unit = item_doc.custom_packaging_unit_code or "PCS"
-                r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{get_packaging_unit}/", timeout=5)
-                r.raise_for_status()
-                packaging_unit_code = r.json().get("code")
-
-                # Get quantity unit code via API
-                get_qty_unit = item_doc.custom_units_of_measure or "PCS"
-                r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{get_qty_unit}/", timeout=5)
-                r.raise_for_status()
-                qty_unit_code = r.json().get("code")
-
-                item_cls_cd = item_doc.get("unspsc_code") or "50102517"
-
-                # Calculate tax amounts
-                # Assuming VAT rate 16% as example (replace with actual rate if available)
-                vat_rate = 0.16
-                taxbl_amt = round(item_amount / (1 + vat_rate), 2)  # Taxable amount (price before VAT)
-                tax_amt = round(item_amount - taxbl_amt, 2)         # VAT amount
-
-                # Update totals
-                total_taxable_amount += taxbl_amt
-                total_tax_amount += tax_amt
-                total_amount += item_amount
-
-                payload["itemList"].append({
-                    "itemSeq": idx + 1,
-                    "itemCd": item_code,
-                    "itemClsCd": item_cls_cd,
-                    "itemNm": item_name,
-                    "bcd": "",
-                    "pkgUnitCd": packaging_unit_code,
+                "totItemCnt": 1,
+                "totTaxblAmt": 86.21,
+                "totTaxAmt": 13.79,
+                "totAmt": 100.00,
+                "remark": "Purchase test",
+                "regrNm": "ADMIN",
+                "regrId": "ADMIN",
+                "modrNm": "ADMIN",
+                "modrId": "ADMIN",
+                "itemList": [
+                    {
+                    "itemSeq": 1,
+                    "itemCd": "ZM2BGKG0000001",
+                    "itemClsCd": "50102517",
+                    "itemNm": "Item Name 1",
+                    "pkgUnitCd": "BG",
                     "pkg": 1,
-                    "qtyUnitCd": qty_unit_code,
-                    "qty": item_qty,
-                    "prc": round(item_rate, 2),
-                    "splyAmt": round(item_amount, 2),
-                    "dcRt": 0.0,
-                    "dcAmt": 0.0,
-                    "taxTyCd": taxTyCd,
+                    "qtyUnitCd": "KG",
+                    "qty": 1,
+                    "prc": 200.00,
+                    "splyAmt": 100.00,
+                    "dcRt": 0.00,
+                    "dcAmt": 0.00,
+                    "taxTyCd": "B",
                     "iplCatCd": "",
                     "tlCatCd": "",
                     "exciseCatCd": "",
-                    "taxblAmt": taxbl_amt,
-                    "vatCatCd": taxTyCd,
-                    "iplTaxblAmt": 0.0,
-                    "tlTaxblAmt": 0.0,
-                    "exciseTaxblAmt": 0.0,
-                    "taxAmt": tax_amt,
-                    "iplAmt": 0.0,
-                    "tlAmt": 0.0,
-                    "exciseTxAmt": 0.0,
-                    "totAmt": round(item_amount, 2)
-                })
-
-            # Update totals in payload
-            payload["totTaxblAmt"] = round(total_taxable_amount, 2)
-            payload["totTaxAmt"] = round(total_tax_amount, 2)
-            payload["totAmt"] = round(total_amount, 2)
-
-            print("Prepared purchase payload:", payload)
+                    "taxblAmt": 86.21,
+                    "vatCatCd": "A",
+                    "iplTaxblAmt": 0.00,
+                    "tlTaxblAmt": 0.00,
+                    "exciseTaxblAmt": 0.00,
+                    "taxAmt": 13.79,
+                    "iplAmt": 0.00,
+                    "tlAmt": 0.00,
+                    "exciseTxAmt": 0.00,
+                    "totAmt": 100.00
+                    }
+                ]
+                }
 
             # Call API to save purchase
             response_data = self.save_purchase_manually(payload)
