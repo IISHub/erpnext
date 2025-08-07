@@ -13,6 +13,13 @@ class NormaSale(ZRAClient):
         self.tax_amt_totals = {key: 0.0 for key in self.TAX_RATES}
         super().__init__()
 
+    def validate_export(self, vatCd, export_destination_country):
+        if vatCd == "C1" and not export_destination_country:
+            frappe.throw(
+                "Export transaction detected (VAT code C1), but no destination country provided. "
+                "Please select a destination country before continuing."
+            )
+
     def create_normal_sale_helper(self, payload):
         return self.normal_sale(payload)
 
@@ -153,6 +160,9 @@ class NormaSale(ZRAClient):
         ), 2)
         total_amount = round(sum(item["totAmt"] for item in processed_items), 2)
 
+        export_destination_country_code = base_data["export_destination_code"]
+        if export_destination_country_code is not None:
+            destnCountryCd = export_destination_country_code
 
         payload = {
             "tpin": self.get_tpin(),
@@ -188,6 +198,8 @@ class NormaSale(ZRAClient):
             "invcAdjustReason": "",
             "itemList": processed_items
         }
+        if destnCountryCd:
+            payload["destnCountryCd"] = destnCountryCd
         self.to_use_data = payload
 
         print(json.dumps(payload, indent=4))
@@ -210,6 +222,7 @@ class NormaSale(ZRAClient):
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
         customer_tpin = customer_doc.get("custom_customer_tpin") or ""
+        export_destination_country = sell_data.get("custom_destination_country")
 
 
         sell_data_item = sell_data.get("items")
@@ -255,10 +268,15 @@ class NormaSale(ZRAClient):
             iplCd = next((key for key, value in iplCat.items() if value == get_ipl_name), None)
             tlCd = next((key for key, value in tlCat.items() if value == get_tl_name), None)
 
+            self.validate_export(vatCd, export_destination_country)
+            destination_country_code = self.get_country_code_by_name(export_destination_country)
+
+
             if iplCd is not None and (vatCd is not None or tlCd is not None):
                 frappe.throw(
                     f"[ZRA Error] IPL transactions (iplCd) must not be combined with VAT or TL. Found: vatCd={vatCd}, tlCd={tlCd}"
                 )
+            
 
             present_codes = [code for code in [vatCd, iplCd, tlCd] if code is not None]
             if len(present_codes) != 1:
@@ -290,7 +308,8 @@ class NormaSale(ZRAClient):
         base_data = {
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
-            "name": name
+            "name": name,
+            "export_destination_code": destination_country_code
         }
 
         print("\n[START] Sending sale data...")

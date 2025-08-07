@@ -50,6 +50,19 @@ class ZRAClient:
 
     def get_branch_code(self):
         return self.branch_code
+    
+    def get_country_code_by_name(self, country_name):
+        try:
+            res = requests.get(f"http://0.0.0.0:7000/country/{quote(country_name)}/", timeout=10)
+            res.raise_for_status()
+            country_code = res.json().get("code")
+            if not country_code:
+                frappe.throw(f"Country code not found for '{country_name}' from external API.")
+            return country_code
+        except requests.exceptions.Timeout:
+            frappe.throw(f"Timeout fetching country code for '{country_name}'.")
+        except requests.RequestException as e:
+            frappe.throw(f"Error fetching country code for '{country_name}' from external API: {e}")
 
     def update_item_in_background(self, update_url, payload):
         def task():
