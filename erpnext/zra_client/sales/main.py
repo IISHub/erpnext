@@ -195,7 +195,7 @@ class NormaSale(ZRAClient):
             "bhfId": self.get_branch_code(),
             "orgInvcNo": 0,
             "cisInvcNo":  base_data["name"],
-            "custTpin": "2000000000",
+            "custTpin": base_data["cust_tpin"],
             "custNm": base_data["cust_name"],
             "salesTyCd": "N",
             "rcptTyCd": "S",
@@ -250,10 +250,10 @@ class NormaSale(ZRAClient):
         customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
-        customer_tpin = customer_doc.get("custom_customer_tpin") or ""
+        customer_tpin = customer_doc.get("custom_tpin") or ""
+        print("Customer TPIN:", customer_tpin)
         export_destination_country = sell_data.get("custom_destination_country")
         lpo_number = sell_data.get("custom_lpo_number")
-        print("LPO NUMBER: ", lpo_number)
         is_lpo_transactions = sell_data.get("custom__lpo_transaction")
         is_export = sell_data.get("custom_export")
         if export_destination_country == "ASCENSION ISLAND":
@@ -343,6 +343,7 @@ class NormaSale(ZRAClient):
             "name": name,
             
         }
+        print("Base data: ", base_data)
         if is_export == 1:
                 self.validate_export(vatCd, export_destination_country, is_export)
                 destination_country_code = self.get_country_code_by_name(export_destination_country)
@@ -359,8 +360,9 @@ class NormaSale(ZRAClient):
                 frappe.throw("Only VAT Code 'C2' is allowed for LPO transactions.")
             if not lpo_number:
                 frappe.throw("LPO Number is required when VAT Code is 'C2' for LPO transactions.")
-                
-        base_data["lpoNumber"] = lpo_number
+            if len(lpo_number) < 9 or len(lpo_number) > 20:
+                frappe.throw("LPO Number length must be between 9 and 20 characters.")
+            base_data["lpoNumber"] = lpo_number
 
         if vatCd == "C2" and not is_lpo_transactions:
             frappe.throw("For VAT Code 'C2', LPO transaction must be checked.")
@@ -599,7 +601,7 @@ class CreditNote(ZRAClient):
                 "orgInvcNo":  orgInvcNo,
                 "orgSdcId": "SDC0010002709",
                 "cisInvcNo": self.generate_cis_invc_no(),
-                "custTpin": "2000000000",
+                "custTpin": base_data["cust_tpin"],
                 "custNm": base_data["cust_name"],
                 "salesTyCd": "N",
                 "rcptTyCd": "R",
@@ -649,7 +651,7 @@ class CreditNote(ZRAClient):
         def send_credit_sale_data(self, sell_data):
             customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
             customer_doc = frappe.get_doc("Customer", customer_name)
-            customer_tpin = customer_doc.get("custom_customer_tpin") or ""
+            customer_tpin = customer_doc.get("custom_tpin") or ""
             original_sell = sell_data.get("return_against")
 
 
@@ -962,7 +964,7 @@ class DebitNote(ZRAClient):
                     "orgInvcNo":  orgInvcNo,
                     "orgSdcId": "SDC0010002709",
                     "cisInvcNo": self.generate_cis_invc_no(),
-                    "custTpin": "2000000000",
+                    "custTpin": base_data["cust_tpin"],
                     "custNm": base_data["cust_name"],
                     "salesTyCd": "N",
                     "rcptTyCd": "D",
@@ -1011,7 +1013,7 @@ class DebitNote(ZRAClient):
             def send_debit_sale_data(self, sell_data):
                 customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
                 customer_doc = frappe.get_doc("Customer", customer_name)
-                customer_tpin = customer_doc.get("custom_customer_tpin") or ""
+                customer_tpin = customer_doc.get("custom_tpin") or ""
                 original_sell = sell_data.get("return_against")
 
 
