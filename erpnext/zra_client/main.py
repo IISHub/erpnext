@@ -515,34 +515,51 @@ class ZRAClient:
             response = requests.post(self.sale_url, json=payload)
             print(" Raw response object:", response)
 
-
             if response.status_code == 200:
                 try:
                     data = response.json()
                     print("ZRA Response JSON:", data)
 
                     if data.get("resultCd") != "000":
-                        raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
+                        full_msg = data.get("resultMsg", "")
+                        
+                       
+                        prefix = "Request parameter error:"
+                        if full_msg.startswith(prefix):
+                            cleaned_msg = full_msg[len(prefix):].strip()
+                        else:
+                            cleaned_msg = full_msg
+
+                        cleaned_msg = cleaned_msg.split("Possible source")[0].strip()
+
+                        frappe.throw(cleaned_msg) 
+
                     return data
+
                 except ValueError:
-                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
-                
+                    frappe.throw(f"ZRA Response is not valid JSON. Raw text: {response.text}")
 
             elif response.status_code == 400:
                 try:
                     data = response.json()
                     error_message = data.get("error", "Unknown error")
-                    raise Exception(f"Error saving normal sale")   
-
+                    frappe.throw(f"Error saving normal sale: {error_message}")
                 except ValueError:
-                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+                    frappe.throw(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+
             else:
-                raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
+                frappe.throw(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
         except requests.RequestException as e:
             frappe.log_error(title="Failed to send normal sale", message=str(e))
-            raise Exception(f"Network or connection error: {e}")
-        
+            frappe.throw(f"Network or connection error: {e}")
+
+
+        except requests.RequestException as e:
+            frappe.log_error(title="Failed to send normal sale", message=str(e))
+            frappe.throw(f"Network or connection error: {e}")
+
+
 
     def credit_sale(self, payload):
         print("**** calling credit sale ***")
