@@ -642,7 +642,7 @@ class ZRAClient:
  
     def zra_client_update_import(self, payload):
         try:
-            response = requests.post(self.update_import_url, json=payload, timeout=10)
+            response = requests.post(self.update_import_url, json=payload, timeout=50)
             response.raise_for_status() 
             result = response.json()
             print(result)
