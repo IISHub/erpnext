@@ -21,10 +21,18 @@ class Imports(ZRAClient):
 
     
         taskCd = import_data.get("custom_task_cd")
-        created_by = import_data.get("owner", "System")
+        modified_by = import_data.get("modified_by")
         get_class_code = import_data.get("custom_item_class_code")
         item_code = import_data.get("name")
         hscd = import_data.get("custom_hscd")
+        get_status = import_data.get("custom_status")
+        get_status = import_data.get("custom_status")
+        remarks = import_data.get("custom_remark")
+        if get_status == "Approved":
+            status = 3
+        else:
+            status = 4
+
 
         if not all([taskCd, get_class_code, item_code]):
             throw(_("Missing required fields: 'custom_task_cd', 'custom_item_class_code', or 'name'."))
@@ -55,10 +63,10 @@ class Imports(ZRAClient):
                     "hsCd": hscd,
                     "itemClsCd": itemClsCd,
                     "itemCd": item_code,
-                    "imptItemSttsCd":3,
-                    "remark": "remark",
-                    "modrNm": "Tim",
-                    "modrId": "Tim",
+                    "imptItemSttsCd":status,
+                    "remark": remarks,
+                    "modrNm": modified_by,
+                    "modrId": modified_by,
                 }
             ]
         }

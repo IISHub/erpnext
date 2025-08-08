@@ -1041,35 +1041,37 @@ function open_form(frm, doctype, child_doctype, parentfield) {
 	});
 }
 
-// frappe.ui.form.on('Item', {
-// 	refresh(frm) {
-// 		console.log("checking");
+frappe.ui.form.on('Item', {
+    refresh(frm) {
+        handle_import_fields(frm);
+    },
 
-// 		if (frm.doc.item_code && frm.doc.item_code.toUpperCase().startsWith("IMPORT")) {
-// 			// Just show the fields
-// 			frm.toggle_display("custom_status", true);
-// 			frm.toggle_display("custom_remark", true);
-// 		} else {
-// 			frm.toggle_display("custom_status", false);
-// 			frm.toggle_display("custom_remark", false);
-// 		}
-// 	},
+    validate(frm) {
+        if (frm.doc.name && frm.doc.name.toUpperCase().startsWith("IMPORT")) {
+            if (!frm.doc.custom_status) {
+                frappe.msgprint("Custom Status cannot be blank for IMPORT items.");
+                frappe.validated = false;
+            }
+            if (!frm.doc.custom_remark) {
+                frappe.msgprint("Custom Remark cannot be blank for IMPORT items.");
+                frappe.validated = false;
+            }
+        }
+    }
+});
 
-// 	item_code(frm) {
-// 		console.log("checking item_code change");
+function handle_import_fields(frm) {
+    if (frm.doc.name && frm.doc.name.toUpperCase().startsWith("IMPORT")) {
+        frm.set_value("custom_status", "Pending Approval");
+        frm.set_value("custom_remark", "Requires approval due to import item");
 
-// 		if (frm.doc.item_code && frm.doc.item_code.toUpperCase().startsWith("IMPORT")) {
-// 			frm.set_value("custom_status", "Pending Approval");
-// 			frm.set_value("custom_remark", "Requires approval due to import item");
+        frm.toggle_display("custom_status", true);
+        frm.toggle_display("custom_remark", true);
+    } else {
+        frm.set_value("custom_status", "");
+        frm.set_value("custom_remark", "");
 
-// 			frm.toggle_display("custom_status", true);
-// 			frm.toggle_display("custom_remark", true);
-// 		} else {
-// 			frm.set_value("custom_status", "");
-// 			frm.set_value("custom_remark", "");
-
-// 			frm.toggle_display("custom_status", false);
-// 			frm.toggle_display("custom_remark", false);
-// 		}
-// 	}
-// });
+        frm.toggle_display("custom_status", false);
+        frm.toggle_display("custom_remark", false);
+    }
+}
