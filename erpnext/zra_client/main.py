@@ -51,6 +51,28 @@ class ZRAClient:
     def get_branch_code(self):
         return self.branch_code
     
+
+    def validate_export(self, vatCd, export_destination_country, is_export):
+        print(f"[VALIDATE EXPORT] is_import: {is_export}, vatCd: {vatCd}, export_destination_country: {export_destination_country}")
+
+        if vatCd == "C1":
+            if not is_export:
+                frappe.throw(
+                    "VAT Code 'C1' signifies an export transaction, but the import flag has not been set. "
+                    "Please make sure the 'Export' checkbox is checked."
+                )
+
+            else:
+                pass
+
+            if not export_destination_country:
+                frappe.throw(
+                    "Export transaction detected (VAT Code 'C1'), but no destination country provided. "
+                    "Please select a destination country before continuing."
+                )
+            else:
+                print("[OK] Destination country provided for VAT Code 'C1'.")
+    
     def get_country_code_by_name(self, country_name):
         try:
             res = requests.get(f"http://0.0.0.0:7000/country/{quote(country_name)}/", timeout=10)
