@@ -756,3 +756,34 @@ frappe.ui.form.on("Purchase Invoice", {
 		}
 	},
 });
+
+frappe.ui.form.on("Purchase Invoice", {
+    refresh: function(frm) {
+        frm.trigger("toggle_custom_transaction_progress");
+        frm.trigger("toggle_custom_tax_type_in_items");
+    },
+
+    toggle_custom_transaction_progress: function(frm) {
+        const show = frm.doc.name && frm.doc.name.startsWith("SMART-INVOICE-PURCHASE");
+        frm.toggle_display("custom_transaction_progress", show);
+    },
+
+    toggle_custom_tax_type_in_items: function(frm) {
+        const hide = frm.doc.name && frm.doc.name.startsWith("SMART-INVOICE-PURCHASE");
+
+        if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
+        	if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
+			frm.fields_dict["items"].grid.toggle_enable("custom_tax_type", false);
+			frm.fields_dict["items"].grid.toggle_enable("custom_ipl", false);
+			frm.fields_dict["items"].grid.toggle_enable("custom_tl", false);
+			frm.fields_dict["items"].grid.toggle_enable("qty", false);
+			frm.fields_dict["items"].grid.toggle_enable("item_code", false);
+			frm.fields_dict["items"].grid.toggle_enable("rate", false);
+			
+			frm.fields_dict["items"].grid.refresh();
+		}
+        } else {
+            console.warn("Items grid is not ready");
+        }
+    }
+});

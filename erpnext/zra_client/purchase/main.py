@@ -43,12 +43,10 @@ class zraPurchase(ZRAClient):
           
 
 
-
-
-
     def create_purchase(self, purchase_data):
         print(purchase_data)
         name = purchase_data.get("name")
+        frappe.throw("You can not precide")
         modified_by = purchase_data.get("modified_by")
         purchase_api_data = self.purchase_item_local(name)
         print(purchase_api_data)
