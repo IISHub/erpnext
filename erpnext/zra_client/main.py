@@ -185,6 +185,33 @@ class ZRAClient:
     
     
         return packaging_unit_code
+    
+    def get_classification_code(self, class_name):
+        try:
+            encoded_class_code = quote(class_name)
+            res = requests.get(f"http://0.0.0.0:7000/api/get-item-class-by-name/{encoded_class_code}/", timeout=10)
+        
+            res.raise_for_status()
+            data = res.json()
+            itemClsCd = data.get("itemClsCd")
+            
+            if not itemClsCd:
+                frappe.throw(f"itemClsCd not found for '{class_name}.")
+            
+            return itemClsCd
+
+        except requests.exceptions.Timeout:
+            frappe.throw(f"Timeout fetching item class code for '{class_name}'.")
+        except requests.exceptions.ConnectionError:
+            frappe.throw(f"Connection error while fetching item class code for '{class_name}'.")
+        except requests.exceptions.HTTPError as e:
+            frappe.throw(f"HTTP error while fetching item class code for '{class_name}': {e}")
+        except requests.exceptions.JSONDecodeError:
+            frappe.throw(f"Invalid JSON response received for '{class_name}'.")
+        except requests.RequestException as e:
+            frappe.throw(f"Error fetching item class code from external API for '{class_name}': {e}")
+        except Exception as e:
+            frappe.throw(f"Unexpected error occurred: {e}")
 
     def get_units_of_measure(self, unit_name):
         if not unit_name:
@@ -502,7 +529,8 @@ class ZRAClient:
             response = requests.post(self.save_purchase_url, json=payload, timeout=60)
             response.raise_for_status()
             data = response.json()
-            print("✅ Success Response:", data)
+            print("Response status code:", response.status_code)
+            print("Response JSON:", data)
             return data
 
         except requests.Timeout:
@@ -516,18 +544,32 @@ class ZRAClient:
             frappe.throw(f"Purchase save failed: {error_msg}")
 
         except requests.HTTPError as e:
+            response = e.response
+            status_code = response.status_code
             try:
-                response_data = e.response.json()
-                error_msg = response_data.get("resultMsg", str(e))
+                response_data = response.json()
+                error_msg = response_data.get("resultMsg", response.text)
             except Exception:
-                error_msg = f"HTTP error occurred: {e}"
-            print("HTTP Error Response:", error_msg)
-            frappe.throw(f"Purchase save failed: {error_msg}")
+                error_msg = response.text or str(e)
+
+            if status_code == 400:
+                detailed_msg = f"Error saving purchase: {error_msg}"
+            elif status_code == 403:
+                detailed_msg = f"Forbidden (403): {error_msg}"
+            elif status_code == 404:
+                detailed_msg = f"Not Found (404): {error_msg}"
+            else:
+                detailed_msg = f"HTTP Error {status_code}: {error_msg}"
+
+            print("HTTP Error Response:", detailed_msg)
+            frappe.throw(f"Purchase save failed: {detailed_msg}")
 
         except requests.RequestException as e:
             error_msg = f"Unexpected error: {str(e)}"
             print("RequestException:", error_msg)
             frappe.throw(f"Purchase save failed: {error_msg}")
+
+
 
 
         

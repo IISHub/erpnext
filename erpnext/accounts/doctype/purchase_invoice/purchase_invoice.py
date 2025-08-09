@@ -747,7 +747,7 @@ class PurchaseInvoice(BuyingController):
 		if purchase_invoice_name.startswith("SMART-INVOICE-PURCHASE"):
 			purchase_obj.create_purchase(purchase_data)
 		else:
-			pass
+			purchase_obj.create_manual_purchase_invoice(purchase_data)
 
 		self.check_prev_docstatus()
 

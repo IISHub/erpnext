@@ -51,6 +51,7 @@ class zraPurchase(ZRAClient):
         name = purchase_data.get("name")
         modified_by = purchase_data.get("modified_by")
         purchase_api_data = self.purchase_item_local(name)
+        print(purchase_api_data)
 
         if not purchase_api_data:
             frappe.throw("No data returned from local purchase API.")
@@ -93,7 +94,7 @@ class zraPurchase(ZRAClient):
             "tpin": self.get_tpin_number(),
             "bhfId": self.get_branch_code(),
             "cisInvcNo": data.get("invoice_name", "N/A"),
-            "regTyCd": "M",
+            "regTyCd": "A",
             "pchsTyCd": "N",
             "rcptTyCd": "P",
             "pmtTyCd": data.get("pmt_ty_cd"),
@@ -113,9 +114,7 @@ class zraPurchase(ZRAClient):
             "modrId": modified_by ,
             "itemList": item_list
         }
-        print(payload)
         response_data = self.save_purchase_manually(payload)
-
         if response_data.get("resultCd") == "000":
             frappe.msgprint(f"Purchase saved successfully: {response_data.get('resultMsg')}")
 
@@ -183,3 +182,230 @@ class zraPurchase(ZRAClient):
             frappe.throw(f"Purchase save failed: {error_msg}")
 
         purchase_data["purchase_payload"] = frappe.as_json(payload)
+
+    def create_manual_purchase_invoice(self, purchase_data):
+        name = purchase_data.get("name")
+        supplier_name = purchase_data.get("spplrNm") or purchase_data.get("supplier_name")
+        supplier_doc = frappe.get_doc("Supplier", supplier_name)
+        supplier_tpin = supplier_doc.get("custom_supplier_tpin")
+
+        if not supplier_tpin:
+            frappe.throw("Supplier TPIN is required. Make sure the supplier has a TPIN.")
+
+        modified_by = purchase_data.get("modrId") or purchase_data.get("modified_by")
+        cfmDt = datetime.now().strftime("%Y%m%d%H%M%S")
+        pchsDt = datetime.now().strftime("%Y%m%d")
+        purchase_invoice_no = purchase_data.get("spplrInvcNo") or purchase_data.get("custom_purchase__invoice")
+        remarks = purchase_data.get("remark") or purchase_data.get("custom_purchase_remarks")
+
+        VAT_RATE = 0.16
+        IPL_RATE = 0.05
+        TL_RATE = 0.03
+        EXCISE_RATE = 0.02
+
+        items = purchase_data.get("itemList") or purchase_data.get("items") or []
+
+        if not items:
+            frappe.throw("No items found in purchase_data. Cannot create purchase invoice without items.")
+
+        formatted_items = []
+        item_seq = 1
+
+        for item in items:
+            item_code = item.get("itemCd") or item.get("item_code")
+            item_qty = item.get("stock_qty", 0)
+            item_price = item.get("base_net_rate")
+            item_total = round(item_qty * item_price, 2)
+
+            item_doc = frappe.get_doc("Item", item_code)
+            item_name = item_doc.get("item_name", "")
+            item_class_name = item_doc.get("custom_item_class_code") or ""
+            item_packaging_name = item_doc.get("custom_packaging_unit_code") or ""
+            item_unit_of_measure_name = item_doc.get("custom_units_of_measure") or ""
+
+            vat_mapping = {
+                "A": "Standard Rated 16%",
+                "B": "Minimum Taxable Value (MTV)",
+                "Exports": "Exports",
+                "C2": "Zero-rating Local Purchases Order",
+                "C3": "Zero-rated by nature 0%",
+                "D": "Exempt",
+                "E": "Disbursement",
+                "C1": "Reverse VAT",
+                "N/A": "N/A"
+            }
+
+            ipl_mapping = {
+                "IPL1": "Insurance Premium Levy",
+                "IPL2": "Re-Insurance"
+            }
+            tl_mapping = {
+                "TL": "Tourism Levy"
+            }
+            excise_mapping = {
+                "ECM": "Excise on Coal",
+                "EXE": "Excise Electricity"
+            }
+
+            get_vat_name = item.get("custom_tax_type")   
+            get_ipl_name = item.get("custom_ipl")          
+            get_tl_name = item.get("custom_tl")            
+            get_excise_name = item.get("custom_excise")   
+
+            vatCd = next((code for code, desc in vat_mapping.items() if desc == get_vat_name), None)
+            iplCd = next((code for code, desc in ipl_mapping.items() if desc == get_ipl_name), None)
+            tlCd = next((code for code, desc in tl_mapping.items() if desc == get_tl_name), None)
+            exciseCd = next((code for code, desc in excise_mapping.items() if desc == get_excise_name), None)
+
+            if vatCd == "A":
+                taxbl_amt = round(item_total / (1 + VAT_RATE), 2)
+                vat_tax_amt = round(item_total - taxbl_amt, 2)
+            else:
+                taxbl_amt = item_total
+                vat_tax_amt = 0
+
+
+            ipl_tax_amt = 0
+            if iplCd == "IPL1": 
+                ipl_tax_amt = round(taxbl_amt * IPL_RATE, 2)
+            elif iplCd == "IPL2":
+                ipl_tax_amt = round(taxbl_amt * IPL_RATE, 2) 
+
+            tl_tax_amt = 0
+            if tlCd == "TL":
+                tl_tax_amt = round(taxbl_amt * TL_RATE, 2)
+
+
+            excise_tax_amt = 0
+            if exciseCd in ["ECM", "EXE"]:
+                excise_tax_amt = round(taxbl_amt * EXCISE_RATE, 2)
+
+            total_tax_amt = vat_tax_amt + ipl_tax_amt + tl_tax_amt + excise_tax_amt
+
+            total_amount = round(taxbl_amt + total_tax_amt, 2)
+
+            formatted_items.append({
+                "itemSeq": item_seq,
+                "itemCd": item_code,
+                "itemClsCd": self.get_classification_code(item_class_name),
+                "itemNm": item_name,
+                "bcd": "",
+                "pkgUnitCd": self.get_packaging_unit(item_packaging_name),
+                "pkg": 0,
+                "qtyUnitCd": self.get_units_of_measure(item_unit_of_measure_name),
+                "qty": item_qty,
+                "prc": item_price,
+                "splyAmt": item_total,
+                "dcRt": 0,
+                "dcAmt": 0,
+                "taxTyCd": vatCd,
+                "iplCatCd": iplCd,
+                "tlCatCd": tlCd,
+                "exciseCatCd": exciseCd,
+                "taxblAmt": taxbl_amt,
+                "vatCatCd": vatCd,
+                "iplTaxblAmt": round(taxbl_amt, 2) if iplCd else "",
+                "tlTaxblAmt": round(taxbl_amt, 2) if tlCd else "",
+                "exciseTaxblAmt": round(taxbl_amt, 2) if exciseCd else "",
+                "taxAmt": total_tax_amt,
+                "iplAmt": ipl_tax_amt if iplCd else "",
+                "tlAmt": tl_tax_amt if tlCd else "",
+                "exciseTxAmt": excise_tax_amt if exciseCd else "",
+                "totAmt": total_amount
+            })
+            item_seq += 1
+
+        payload = {
+            "tpin": self.get_tpin_number(),
+            "bhfId": self.get_branch_code(),
+            "cisInvcNo": name,
+            "spplrTpin": supplier_tpin,
+            "spplrNm": supplier_name,
+            "spplrInvcNo": purchase_invoice_no,
+            "regTyCd": "M",
+            "pchsTyCd": "N",
+            "rcptTyCd": "P",
+            "pmtTyCd": "01",
+            "pchsSttsCd": "02",
+            "cfmDt": cfmDt,
+            "pchsDt": pchsDt,
+            "cnclReqDt": "",
+            "cnclDt": "",
+            "totItemCnt": len(formatted_items),
+            "totTaxblAmt": round(sum(i["taxblAmt"] for i in formatted_items), 2),
+            "totTaxAmt": round(sum(i["taxAmt"] for i in formatted_items), 2),
+            "totAmt": round(sum(i["totAmt"] for i in formatted_items), 2),
+            "remark": remarks,
+            "regrNm": modified_by,
+            "regrId": modified_by,
+            "modrNm": modified_by,
+            "modrId": modified_by,
+            "itemList": formatted_items
+        }
+        response_data = self.save_purchase_manually(payload)
+        self.to_use_data = payload
+
+
+        result_code = response_data.get("resultCd")
+        result_msg = response_data.get("resultMsg", "Unknown error")
+
+        if result_code == "000":
+            update_stock_items = []
+            update_stock_master_items = []
+
+                  
+            for item in self.to_use_data.get("itemList", []):
+                update_stock_items.append({
+                "itemSeq": item.get("itemSeq"),
+                "itemCd": item.get("itemCd"),
+                "itemClsCd": item.get("itemClsCd"),
+                "itemNm": item.get("itemNm"),
+                "pkgUnitCd": item.get("pkgUnitCd"),
+                "qtyUnitCd": item.get("qtyUnitCd"),
+                "qty": item.get("qty"),
+                "prc": item.get("prc"),
+                "splyAmt": item.get("splyAmt"),
+                "taxblAmt": item.get("taxblAmt"), 
+                "vatCatCd": item.get("vatCatCd"),
+                "taxAmt": item.get("taxAmt"),      
+                "totAmt": item.get("totAmt"),
+                "pkg": item.get("pkg", 1),
+                "totDcAmt": item.get("dcAmt", 0),
+                })
+
+
+                remaining_qty = 12  
+                update_stock_master_items.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": max(0, remaining_qty)
+                })
+
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+            update_stock_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": "M",
+                "sarTyCd": "02",
+                "ocrnDt": ocrnDt,
+                "totItemCnt": self.to_use_data['totItemCnt'],
+                "totTaxblAmt": self.to_use_data['totTaxblAmt'],
+                "totTaxAmt": self.to_use_data['totTaxAmt'],
+                "totAmt": self.to_use_data['totAmt'],
+                "regrId": modified_by,
+                "regrNm": modified_by, 
+                "modrNm": modified_by,
+                "modrId": modified_by ,
+                "itemList": update_stock_items
+            }
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items,  modified_by)
+
+            frappe.msgprint(f"Purchase saved successfully: {result_msg}")
+        else:
+            frappe.throw(f"Error saving Purchase: {result_msg}")
+
+
+
+
+
