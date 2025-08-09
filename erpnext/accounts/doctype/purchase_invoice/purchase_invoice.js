@@ -769,19 +769,18 @@ frappe.ui.form.on("Purchase Invoice", {
     },
 
     toggle_custom_tax_type_in_items: function(frm) {
-        const hide = frm.doc.name && frm.doc.name.startsWith("SMART-INVOICE-PURCHASE");
+        const disable = frm.doc.name && frm.doc.name.startsWith("SMART-INVOICE-PURCHASE");
 
         if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
-        	if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
-			frm.fields_dict["items"].grid.toggle_enable("custom_tax_type", false);
-			frm.fields_dict["items"].grid.toggle_enable("custom_ipl", false);
-			frm.fields_dict["items"].grid.toggle_enable("custom_tl", false);
-			frm.fields_dict["items"].grid.toggle_enable("qty", false);
-			frm.fields_dict["items"].grid.toggle_enable("item_code", false);
-			frm.fields_dict["items"].grid.toggle_enable("rate", false);
-			
-			frm.fields_dict["items"].grid.refresh();
-		}
+            // Toggle enable = !disable means if disable is true, enable = false (disabled)
+            frm.fields_dict["items"].grid.toggle_enable("custom_tax_type", !disable);
+            frm.fields_dict["items"].grid.toggle_enable("custom_ipl", !disable);
+            frm.fields_dict["items"].grid.toggle_enable("custom_tl", !disable);
+            frm.fields_dict["items"].grid.toggle_enable("qty", !disable);
+            frm.fields_dict["items"].grid.toggle_enable("item_code", !disable);
+            frm.fields_dict["items"].grid.toggle_enable("rate", !disable);
+
+            frm.fields_dict["items"].grid.refresh();
         } else {
             console.warn("Items grid is not ready");
         }

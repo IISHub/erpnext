@@ -130,23 +130,10 @@ class ZRAClient:
             try:
                 response = self.update_stock_zra_client(update_stock_payload)
                 if response.get("resultCd") == "000":
-                    print("Stock updated successfully after sale.")
-
-                    create_update_stock_master_payload = {
-                        "tpin": self.tpin,
-                        "bhfId": self.branch_code,
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
-                        "stockItemList": update_stock_master_items
-                    }
-                    print(create_update_stock_master_payload)
-                    response = self.save_stock_master_zra_client(create_update_stock_master_payload)
-                    print("Response :", response)
+                    print("Stock updated.")
+                    response = self.save_stock_master_zra_client(update_stock_master_items)
                     if response.get("resultCd") == "000":
-                        
-                        print("Stock master updated successfully after sale.")
+                        print("Stock master updated")
                     else:
                         print("Failed to update stock master:", response)
                 else:
