@@ -247,9 +247,7 @@ class StockEntry(StockController):
 			self.reset_default_field_value("to_warehouse", "items", "t_warehouse")
 
 	def on_submit(self):
-		print("submitting")
 		stock_data = self.as_dict()
-		print("data", stock_data)
 		stock_client = Stock()
 		
 		stock_client.create_stock(stock_data)
