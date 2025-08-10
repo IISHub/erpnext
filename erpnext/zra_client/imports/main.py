@@ -1,11 +1,13 @@
 import requests
-from frappe import throw, _
 import frappe
+from frappe import throw, _
 from erpnext.zra_client.main import ZRAClient
+from datetime import datetime
 
 class Imports(ZRAClient):
     def __init__(self):
         super().__init__()
+        self.to_use_data = {}  
 
     def get_tpin(self):
         return self.tpin
@@ -17,53 +19,32 @@ class Imports(ZRAClient):
         return self.zra_client_update_import(payload)
 
     def update_import(self, import_data):
-        print("Import data received:", import_data)
-
-    
         taskCd = import_data.get("custom_task_cd")
         modified_by = import_data.get("modified_by")
         get_class_code = import_data.get("custom_item_class_code")
         item_code = import_data.get("name")
         hscd = import_data.get("custom_hscd")
-        get_status = import_data.get("custom_status")
-        get_status = import_data.get("custom_status")
         remarks = import_data.get("custom_remark")
-        if get_status == "Approved":
-            status = 3
-        else:
-            status = 4
+        created_by = import_data.get("owner")
+        get_status = import_data.get("custom_status")
 
+        status = 3 if get_status == "Approved" else 4
 
         if not all([taskCd, get_class_code, item_code]):
             throw(_("Missing required fields: 'custom_task_cd', 'custom_item_class_code', or 'name'."))
-
-        try:
-            res = requests.get(
-                f"http://0.0.0.0:7000/api/get-item-class-by-name/{get_class_code}/",
-                timeout=5
-            )
-            res.raise_for_status()
-            data = res.json()
-            itemClsCd = data.get("itemClsCd")
-
-            if not itemClsCd:
-                throw(_(f"itemClsCd not found for '{get_class_code}'"))
-
-        except requests.RequestException as e:
-            throw(_(f"Error fetching item class code: {e}"))
 
         payload = {
             "tpin": self.get_tpin(),
             "bhfId": self.get_bhf_id(),
             "taskCd": taskCd,
-            "dclDe": "20240426",  
+            "dclDe": datetime.now().strftime("%Y%m%d"),
             "importItemList": [
                 {
                     "itemSeq": 1,
                     "hsCd": hscd,
-                    "itemClsCd": itemClsCd,
+                    "itemClsCd": self.get_classification_code(get_class_code),
                     "itemCd": item_code,
-                    "imptItemSttsCd":status,
+                    "imptItemSttsCd": status,
                     "remark": remarks,
                     "modrNm": modified_by,
                     "modrId": modified_by,
@@ -75,15 +56,70 @@ class Imports(ZRAClient):
 
         response = self.call_update_import(payload)
 
-
         if response.get("resultCd") not in ["000", "001"]:
+            update_stock_items = []
+            update_stock_master_items = []
+
+            for item in self.to_use_data.get("itemList", []):
+                update_stock_items.append({
+                    "itemSeq": item.get("itemSeq"),
+                    "itemCd": item.get("itemCd"),
+                    "itemClsCd": item.get("itemClsCd"),
+                    "itemNm": item.get("itemNm"),
+                    "pkgUnitCd": item.get("pkgUnitCd"),
+                    "qtyUnitCd": item.get("qtyUnitCd"),
+                    "qty": item.get("qty"),
+                    "prc": item.get("prc"),
+                    "splyAmt": item.get("splyAmt"),
+                    "taxblAmt": item.get("vatTaxblAmt"),
+                    "vatCatCd": item.get("vatCatCd"),
+                    "taxAmt": item.get("vatAmt"),
+                    "totAmt": item.get("totAmt"),
+                    "pkg": item.get("pkg", 1),
+                    "totDcAmt": item.get("dcAmt", 0),
+                })
+
+                remaining_qty = 12
+                update_stock_master_items.append({
+                    "itemCd": item.get("itemCd"),
+                    "rsdQty": max(0, remaining_qty)
+                })
+
+            ocrnDt = datetime.now().strftime("%Y%m%d")
+
+            update_stock_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.branch_code,
+                "sarNo": 1,
+                "orgSarNo": 0,
+                "regTyCd": "M",
+                "sarTyCd": "06",
+                "ocrnDt": ocrnDt,
+                "totItemCnt": self.to_use_data.get('totItemCnt', 0),
+                "totTaxblAmt": self.to_use_data.get('totTaxblAmt', 0),
+                "totTaxAmt": self.to_use_data.get('totTaxAmt', 0),
+                "totAmt": self.to_use_data.get('totAmt', 0),
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "itemList": update_stock_items
+            }
+
+            update_stock_master_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.get_bhf_id(),
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "stockItemList": update_stock_master_items
+            }
+
+            print(update_stock_payload, update_stock_master_items)
+
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
+            frappe.msgprint("Imported item updated")
+        else:
             frappe.throw(_(f"ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
 
-    
-        self.update_stock_master()
-
-    def update_stock(self):
-        print("Updating stock...")
-
-    def update_stock_master(self):
-        print("Updating stock master...")
