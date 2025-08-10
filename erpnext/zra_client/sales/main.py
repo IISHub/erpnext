@@ -401,7 +401,7 @@ class NormaSale(ZRAClient):
                 "sarNo": 1,
                 "orgSarNo": 0,
                 "regTyCd": "M",
-                "sarTyCd": "02",
+                "sarTyCd": "11",
                 "ocrnDt": ocrnDt,
                 "totItemCnt": self.to_use_data['totItemCnt'],
                 "totTaxblAmt": self.to_use_data['totTaxblAmt'],
@@ -414,9 +414,18 @@ class NormaSale(ZRAClient):
                 "itemList": update_stock_items
             }
 
-            print(update_stock_payload, update_stock_master_items)
-            self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
+            update_stock_master_payload = {
+                "tpin": self.tpin,
+                "bhfId": self.get_branch_code(),
+                "regrId": created_by,
+                "regrNm": created_by,
+                "modrNm": created_by,
+                "modrId": created_by,
+                "stockItemList": update_stock_master_items 
+                }
 
+            print(update_stock_payload, update_stock_master_items)
+            self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
             frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
         else:
@@ -814,7 +823,7 @@ class CreditNote(ZRAClient):
                     "sarNo": 1,
                     "orgSarNo": 0,
                     "regTyCd": "M",
-                    "sarTyCd": "02",
+                    "sarTyCd": "03",
                     "ocrnDt": ocrnDt,
                     "totItemCnt": self.to_use_data['totItemCnt'],
                     "totTaxblAmt": self.to_use_data['totTaxblAmt'],
@@ -827,8 +836,20 @@ class CreditNote(ZRAClient):
                     "itemList": update_stock_items
                 }
 
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.get_branch_code(),
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master_items 
+                    }
+                
+
+
                 print(update_stock_payload, update_stock_master_items)
-                self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
+                self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
 
                 frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
@@ -1221,7 +1242,7 @@ class DebitNote(ZRAClient):
                         "sarNo": 1,
                         "orgSarNo": 0,
                         "regTyCd": "M",
-                        "sarTyCd": "02",
+                        "sarTyCd": "06",
                         "ocrnDt": ocrnDt,
                         "totItemCnt": self.to_use_data['totItemCnt'],
                         "totTaxblAmt": self.to_use_data['totTaxblAmt'],
@@ -1233,9 +1254,18 @@ class DebitNote(ZRAClient):
                         "modrId": created_by,
                         "itemList": update_stock_items
                     }
+                    update_stock_master_payload = {
+                        "tpin": self.tpin,
+                        "bhfId": self.get_branch_code(),
+                        "regrId": created_by,
+                        "regrNm": created_by,
+                        "modrNm": created_by,
+                        "modrId": created_by,
+                        "stockItemList": update_stock_master_items 
+                        }
 
                     print(update_stock_payload, update_stock_master_items)
-                    self.run_stock_update_in_background(update_stock_payload, update_stock_master_items, created_by)
+                    self.run_stock_update_in_background(update_stock_payload,  update_stock_master_payload, created_by)
 
 
                     frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
