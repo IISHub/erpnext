@@ -179,14 +179,13 @@ class Item(Document):
 
 	def before_insert(self):
 		item_data = self.as_dict()
+		zra_obj = ZRAClient()
 		print("Incoming item_data:", json.dumps(item_data, indent=2))
 
-		# Validate and retrieve mandatory item class code
 		get_item_class_code = item_data.get("custom_item_class_code", "").strip()
 		if not get_item_class_code:
 			frappe.throw("Missing ZRA Item Classification Code.")
 
-		# Map product type to ZRA code
 		product_type = item_data.get("custom_product_type", "").strip()
 		itemTyCd = None
 		if product_type == "Raw Material":
@@ -198,7 +197,6 @@ class Item(Document):
 		if not itemTyCd:
 			frappe.throw("Missing or invalid ZRA Item Type Code. Must be 'Raw Material', 'Finished Product', or 'Service'.")
 
-		# Mandatory fields
 		unit_name = item_data.get("custom_units_of_measure", "").strip()
 		if not unit_name:
 			frappe.throw("Missing ZRA Quantity Unit Code.")
@@ -211,26 +209,31 @@ class Item(Document):
 		if not packaging_unit:
 			frappe.throw("Missing ZRA Packaging Unit Code.")
 
-		# VAT mapping
+		country_code = zra_obj.get_country_code_by_name(country_name)
+		packaging_unit_code = zra_obj.get_packaging_unit(packaging_unit)
+		qtyUnitCd = zra_obj.get_units_of_measure(unit_name)
+
 		vat_raw = item_data.get("custom_vat", "").replace(" ", "").strip()
 		vat_map = {
-			"StandardRated": "A", "MinimumTaxableValue": "B", "Exports": "C1",
-			"ZeroRatingLocalPurchases": "C2", "ZeroRatedByNature": "C3",
-			"Exempt": "D", "Disbursement": "E", "ServiceCharge10%": "F", "ReverseVAT": "RVAT"
+			"StandardRated": "A", 
+			"MinimumTaxableValue": "B", 
+			"Exports": "C1",
+			"ZeroRatingLocalPurchases": "C2", 
+			"ZeroRatedByNature": "C3",
+			"Exempt": "D", 
+			"Disbursement": "E", 
+			"ServiceCharge10%": "F", 
+			"ReverseVAT": "RVAT"
 		}
 		vatCatCd = vat_map.get(vat_raw, "A")
 
-		# Excise Tax Category
 		excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
-		exciseTxCatCd = None
+		exciseTxCatCd = ""
 		if excise_name == "Excise on Coal":
 			exciseTxCatCd = "ECM"
 		elif excise_name == "Excise Electricity":
 			exciseTxCatCd = "EXEEG"
-		else:
-			exciseTxCatCd = ""
 
-		# IPL
 		ipl_name = item_data.get("custom_ipl_category_code", "").strip()
 		iplCatCd = None
 		if ipl_name == "Insurance Premium Levy":
@@ -238,15 +241,12 @@ class Item(Document):
 		elif ipl_name == "Re-Insurance":
 			iplCatCd = "IPL2"
 
-		# Tourism Levy
 		tl_name = item_data.get("custom_tourism_levy_category_code", "").strip()
 		tlCatCd = "TL" if tl_name == "Tourism Levy" else None
 
-		# Manufacturer fields
 		manufacturer_tpin = item_data.get("custom_manufacturer_tpin", "").strip() or None
 		manufacturer_item_code = item_data.get("custom_manufacturer_item_code", "").strip() or None
 
-		# Recommended Retail Price
 		rrp = None
 		rrp_raw = item_data.get("custom_recommended_retail_price")
 		if rrp_raw is not None and str(rrp_raw).strip() != "":
@@ -255,64 +255,14 @@ class Item(Document):
 			except ValueError:
 				frappe.log_error(f"Invalid RRP value for item {self.item_name}: {rrp_raw}", "ZRA Item Save Warning")
 
-		# Flags
 		svcChargeYn = "Y" if item_data.get("custom_has_service_charge") else "N"
 		rentalYn = "Y" if item_data.get("custom_has_rental_charge") else "N"
 
-		# Additional Info and Barcode
 		add_info = item_data.get("custom_zra_additional_info", "").strip() or None
 		barcode = item_data.get("barcode", "").strip() or None
 
-		# Batch Number (not used yet)
 		btchNo = None
 
-		# External API Calls
-		try:
-			encoded_class_code = quote(get_item_class_code)
-			res = requests.get(f"http://0.0.0.0:7000/api/get-item-class-by-name/{encoded_class_code}/", timeout=10)
-			res.raise_for_status()
-			itemClsCd = res.json().get("itemClsCd")
-			if not itemClsCd:
-				frappe.throw(f"itemClsCd not found for '{get_item_class_code}' from external API.")
-		except requests.exceptions.Timeout:
-			frappe.throw(f"Timeout fetching item class code for '{get_item_class_code}'.")
-		except requests.RequestException as e:
-			frappe.throw(f"Error fetching item class code from external API: {e}")
-
-		try:
-			res = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{quote(unit_name)}/", timeout=10)
-			res.raise_for_status()
-			qtyUnitCd = res.json().get("code")
-			if not qtyUnitCd:
-				frappe.throw(f"Unit code not found for '{unit_name}' from external API.")
-		except requests.exceptions.Timeout:
-			frappe.throw(f"Timeout fetching unit code for '{unit_name}'.")
-		except requests.RequestException as e:
-			frappe.throw(f"Error fetching unit code for '{unit_name}' from external API: {e}")
-
-		try:
-			res = requests.get(f"http://0.0.0.0:7000/country/{quote(country_name)}/", timeout=10)
-			res.raise_for_status()
-			country_code = res.json().get("code")
-			if not country_code:
-				frappe.throw(f"Country code not found for '{country_name}' from external API.")
-		except requests.exceptions.Timeout:
-			frappe.throw(f"Timeout fetching country code for '{country_name}'.")
-		except requests.RequestException as e:
-			frappe.throw(f"Error fetching country code for '{country_name}' from external API: {e}")
-
-		try:
-			res = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{quote(packaging_unit)}/", timeout=10)
-			res.raise_for_status()
-			packaging_unit_code = res.json().get("code")
-			if not packaging_unit_code:
-				frappe.throw(f"Packaging unit code not found for '{packaging_unit}' from external API.")
-		except requests.exceptions.Timeout:
-			frappe.throw(f"Timeout fetching packaging unit code for '{packaging_unit}'.")
-		except requests.RequestException as e:
-			frappe.throw(f"Error fetching packaging unit code for '{packaging_unit}': {e}")
-
-		# Generate item_code
 		item_code = None
 		for _ in range(5):
 			try:
@@ -330,11 +280,9 @@ class Item(Document):
 		else:
 			frappe.throw("Failed to generate a unique item code after 5 attempts.")
 
-		# Assign to DocType
 		self.item_code = item_code
 		self.name = item_code
 
-		# opening_stock
 		opening_stock = 0.0
 		try:
 			raw_opening_stock = item_data.get("opening_stock")
@@ -343,7 +291,6 @@ class Item(Document):
 		except ValueError:
 			frappe.throw("Invalid opening_stock value. Must be a number.")
 
-		# default_price
 		default_price = 0.0
 		try:
 			raw_default_price = item_data.get("standard_rate")
@@ -352,17 +299,15 @@ class Item(Document):
 		except ValueError:
 			frappe.throw("Invalid standard_rate value. Must be a number.")
 
-		# Creator info
 		created_by = item_data.get("owner", "System")
 
-		# Payload
 		payload = {
-			"tpin": "2484778002",
-			"bhfId": "000",
+			"tpin": zra_obj.get_tpin(),
+			"bhfId": zra_obj.get_branch_code(),
 			"itemCd": item_code,
-			"itemClsCd": itemClsCd,
+			"itemClsCd": zra_obj.get_classification_code(get_item_class_code),
 			"itemTyCd": itemTyCd,
-			"itemNm": item_data.get("item_name") or "Unnamed",
+			"itemNm": item_data.get("item_name"),
 			"orgnNatCd": country_code,
 			"pkgUnitCd": packaging_unit_code,
 			"qtyUnitCd": qtyUnitCd,
@@ -373,8 +318,6 @@ class Item(Document):
 			"btchNo": btchNo,
 			"bcd": barcode,
 			"dftPrc": default_price,
-			"manufacturerTpin": manufacturer_tpin,
-			"manufacturerItemCd": manufacturer_item_code,
 			"rrp": rrp,
 			"svcChargeYn": svcChargeYn,
 			"rentalYn": rentalYn,
@@ -390,7 +333,6 @@ class Item(Document):
 
 		print("Payload being sent:", json.dumps(payload, indent=2))
 
-		# Call external ZRA registration function
 		item_obj = zraItem()
 		item_obj.create_item_helper(payload)
 

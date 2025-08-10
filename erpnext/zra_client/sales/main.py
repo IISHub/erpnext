@@ -162,6 +162,7 @@ class NormaSale(ZRAClient):
             destnCountryCd = None
         
         get_lpoNumber = base_data.get("lpoNumber")
+        get_principal_id = base_data.get("principalId")
 
 
         payload = {
@@ -200,9 +201,12 @@ class NormaSale(ZRAClient):
         if destnCountryCd:
             payload["destnCountryCd"] = destnCountryCd
 
-        print("Checkin for LOP: ", get_lpoNumber)
         if get_lpoNumber:
             payload["lpoNumber"] = get_lpoNumber
+
+        if get_principal_id:
+            payload["principalId"] = get_principal_id
+
         self.to_use_data = payload
 
         print(json.dumps(payload, indent=4))
@@ -225,11 +229,12 @@ class NormaSale(ZRAClient):
         name = sell_data.get("name")
         customer_doc = frappe.get_doc("Customer", customer_name)
         customer_tpin = customer_doc.get("custom_tpin") or ""
-        print("Customer TPIN:", customer_tpin)
         export_destination_country = sell_data.get("custom_destination_country")
         lpo_number = sell_data.get("custom_lpo_number")
         is_lpo_transactions = sell_data.get("custom__lpo_transaction")
         is_export = sell_data.get("custom_export")
+        is_rvat_agent = sell_data.get("custom_rvat")
+        principal_id = sell_data.get("custom_principal_id")
         if export_destination_country == "ASCENSION ISLAND":
             export_destination_country = " "
         
@@ -278,23 +283,13 @@ class NormaSale(ZRAClient):
             iplCd = next((key for key, value in iplCat.items() if value == get_ipl_name), None)
             tlCd = next((key for key, value in tlCat.items() if value == get_tl_name), None)
 
-            
-
-            
-
-
-
             present_codes = [code for code in [vatCd, iplCd, tlCd] if code is not None]
             if len(present_codes) != 1:
                 frappe.throw("Exactly one of vatCd, iplCd, or tlCd must be present. Found: {}".format(len(present_codes)))
 
-
-
             print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
             itemName = item.get("item_name")
 
-            
-        
             qty = item.get("qty")
 
             items.append({
@@ -343,6 +338,14 @@ class NormaSale(ZRAClient):
 
         if vatCd == "C2" and not is_lpo_transactions:
             frappe.throw("For VAT Code 'C2', LPO transaction must be checked.")
+
+        if is_rvat_agent:
+            if not principal_id:
+                frappe.throw("For RVAT Agent Sales, Principal ID is required.")
+            base_data["principalId"] = principal_id
+
+
+
 
 
         print("\n[START] Sending sale data...")
@@ -640,6 +643,7 @@ class CreditNote(ZRAClient):
             }
         
         def send_credit_sale_data(self, sell_data):
+            print(sell_data)
             customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
             customer_doc = frappe.get_doc("Customer", customer_name)
             customer_tpin = customer_doc.get("custom_tpin") or ""
@@ -648,6 +652,8 @@ class CreditNote(ZRAClient):
             lpo_number = sell_data.get("custom_lpo_number")
             is_lpo_transactions = sell_data.get("custom__lpo_transaction")
             is_export = sell_data.get("custom_export")
+            
+
             if export_destination_country == "ASCENSION ISLAND":
                 export_destination_country = " "
 
@@ -754,6 +760,7 @@ class CreditNote(ZRAClient):
 
             if vatCd == "C2" and not is_lpo_transactions:
                 frappe.throw("For VAT Code 'C2', LPO transaction must be checked.")
+
             print("\n[START] Sending sale data...")
             payload = self.build_payload(items, base_data)
             response = self.create_normal_sale_helper(payload)

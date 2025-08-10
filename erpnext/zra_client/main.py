@@ -53,8 +53,6 @@ class ZRAClient:
     
 
     def validate_export(self, vatCd, export_destination_country, is_export):
-        print(f"[VALIDATE EXPORT] is_import: {is_export}, vatCd: {vatCd}, export_destination_country: {export_destination_country}")
-
         if vatCd == "C1":
             if not is_export:
                 frappe.throw(
@@ -572,18 +570,11 @@ class ZRAClient:
                     print("ZRA Response JSON:", data)
 
                     if data.get("resultCd") != "000":
-                        full_msg = data.get("resultMsg", "")
-                        
-                       
-                        prefix = "Request parameter error:"
-                        if full_msg.startswith(prefix):
-                            cleaned_msg = full_msg[len(prefix):].strip()
-                        else:
-                            cleaned_msg = full_msg
+                        full_msg = data.get("resultMsg", "Unknown error")
 
-                        cleaned_msg = cleaned_msg.split("Possible source")[0].strip()
-
-                        frappe.throw(cleaned_msg) 
+                        if "[<principalId>] : provided is not found" in full_msg:
+                            frappe.throw("Provide principal ID is not found")
+                        frappe.throw(full_msg)
 
                     return data
 
@@ -601,14 +592,12 @@ class ZRAClient:
             else:
                 frappe.throw(f"ZRA HTTP Error {response.status_code}: {response.text}")
 
-        except requests.RequestException as e:
-            frappe.log_error(title="Failed to send normal sale", message=str(e))
-            frappe.throw(f"Network or connection error: {e}")
+        except requests.exceptions.RequestException as e:
+            frappe.throw(f"Request failed: {e}")
 
 
-        except requests.RequestException as e:
-            frappe.log_error(title="Failed to send normal sale", message=str(e))
-            frappe.throw(f"Network or connection error: {e}")
+
+
 
 
 

@@ -1150,6 +1150,7 @@ frappe.ui.form.on("Sales Invoice", {
         frm.trigger("toggle_return_fields");
         frm.trigger("toggle_return_is_debit_note");
         frm.trigger("toggle_export_fields");
+        frm.trigger("toggle_rvat_agent");
     },
 
     custom__lpo_transaction: function(frm) {
@@ -1166,6 +1167,10 @@ frappe.ui.form.on("Sales Invoice", {
 
     custom_export: function(frm) {
         frm.trigger("toggle_export_fields");
+    },
+
+    custom_rvat: function(frm) {
+        frm.trigger("toggle_rvat_agent");
     },
 
     toggle_lpo_fields: function(frm) {
@@ -1194,7 +1199,13 @@ frappe.ui.form.on("Sales Invoice", {
 
         frm.toggle_display("custom_destination_country", show);
         frm.set_df_property("custom_destination_country", "reqd", show);
+    },
 
+    toggle_rvat_agent: function(frm) {
+        const show = frm.doc.custom_rvat === 1;
+
+        frm.toggle_display("custom_principal_id", show);
+        frm.set_df_property("custom_principal_id", "reqd", show);
     }
 });
 
