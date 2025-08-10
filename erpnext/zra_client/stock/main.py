@@ -150,4 +150,4 @@ class Stock(ZRAClient):
         print("stock master payload: ", update_stock_master_payload)
 
         self.run_stock_update_in_background(payload, update_stock_master_payload, created_by)
-        frappe.throw("Error create this!")
+
