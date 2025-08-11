@@ -1205,16 +1205,30 @@ frappe.ui.form.on("Sales Invoice", {
     },
 });
 
+
 frappe.ui.form.on('Sales Invoice', {
     refresh: function(frm) {
-        toggle_custom_rate(frm);
+        if (frm.doc.docstatus === 0) {
+            toggle_custom_rate(frm);
+        } else {
+
+            frm.set_df_property('custom_rate', 'hidden', 1);
+            frm.set_value('custom_rate', '', null, {silent: true});
+        }
     },
     custom_sale_currency_: function(frm) {
-        toggle_custom_rate(frm);
+        if (frm.doc.docstatus === 0) {
+            toggle_custom_rate(frm);
+        }
     }
 });
 
 function toggle_custom_rate(frm) {
+    if (frm.doc.docstatus !== 0) {
+        frm.set_df_property('custom_rate', 'hidden', 1);
+        frm.set_value('custom_rate', '', null, {silent: true});
+        return;
+    }
 
     const currencyMap = {
         "Zambian kwacha": "ZMW",
@@ -1227,7 +1241,7 @@ function toggle_custom_rate(frm) {
     const selectedCurrency = frm.doc.custom_sale_currency_;
     if (!selectedCurrency || !(selectedCurrency in currencyMap)) {
         frm.set_df_property('custom_rate', 'hidden', 1);
-        frm.set_value('custom_rate', '');
+        frm.set_value('custom_rate', '', null, {silent: true});
         return;
     }
 
@@ -1237,8 +1251,7 @@ function toggle_custom_rate(frm) {
     const toCurrency = currencyMap[selectedCurrency];
 
     if (fromCurrency === toCurrency) {
-
-        frm.set_value('custom_rate', 1);
+        frm.set_value('custom_rate', 1, null, {silent: true});
         return;
     }
 
@@ -1254,15 +1267,14 @@ function toggle_custom_rate(frm) {
     .then(response => response.json())
     .then(data => {
         if (data && data.result && data.result[toCurrency]) {
-            frm.set_value('custom_rate', data.result[toCurrency]);
+            frm.set_value('custom_rate', data.result[toCurrency], null, {silent: true});
         } else {
             frappe.msgprint(`Exchange rate retrieval failed. Ensure you have a stable network connection.`);
-            frm.set_value('custom_rate', '');
+            frm.set_value('custom_rate', '', null, {silent: true});
         }
     })
     .catch(error => {
-        frappe.msgprint(`Unable to get exchange rate. Please verify your internet connection`);
-        frm.set_value('custom_rate', '');
+        frappe.msgprint(`Unable to get exchange rate. Please verify your internet connection.`);
+        frm.set_value('custom_rate', '', null, {silent: true});
     });
 }
-

@@ -662,8 +662,8 @@ class CreditNote(ZRAClient):
                 "modrNm": "admin",
                 "saleCtyCd": "1",
                 "lpoNumber": None,
-                "currencyTyCd": "ZMW",
-                "exchangeRt": "1",
+                "currencyTyCd": base_data["currencyCd"],
+                "exchangeRt": base_data["exchangeRt"],
                 "dbtRsnCd": "",
                 "rfdRsnCd": "01",
                 "invcAdjustReason": "",
@@ -702,10 +702,33 @@ class CreditNote(ZRAClient):
             lpo_number = sell_data.get("custom_lpo_number")
             is_lpo_transactions = sell_data.get("custom__lpo_transaction")
             is_export = sell_data.get("custom_export")
+            currency = sell_data.get("custom_sale_currency_")
+            exchangeRt = sell_data.get("custom_rate")
             
 
             if export_destination_country == "ASCENSION ISLAND":
                 export_destination_country = " "
+
+
+            currencies = [
+                {"code": "ZMW", "name": "Zambian kwacha"},
+                {"code": "USD", "name": "United States Dollar"},
+                {"code": "ZAR", "name": "South African Rand"},
+                {"code": "GBP", "name": "Pound Sterling"},
+                {"code": "CNY", "name": "Chinese Yuan"},
+                {"code": "EUR", "name": "Euro"},
+            ]
+
+            currency_dict = {currency["name"]: currency["code"] for currency in currencies}
+    
+            currencyCd = None
+            if currency in currency_dict:
+                currencyCd = currency_dict[currency]
+            else:
+                frappe.throw(f"Currency name '{currency}' not found.")
+
+            if exchangeRt is None:
+                frappe.throw(f"Exchange rate for Currency name '{currency}' not found.")
 
 
             sell_data_item = sell_data.get("items")
@@ -785,6 +808,8 @@ class CreditNote(ZRAClient):
                 "cust_name": customer_name,
                 "cust_tpin": customer_tpin,
                 "original_sell": original_sell,
+                "currencyCd": currencyCd,
+                "exchangeRt": exchangeRt,
             }
             if is_export == 1 or vatCd == "C1":
                 self.validate_export(vatCd, export_destination_country, is_export)
@@ -1088,8 +1113,8 @@ class DebitNote(ZRAClient):
                     "modrNm": "admin",
                     "saleCtyCd": "1",
                     "lpoNumber": None,
-                    "currencyTyCd": "ZMW",
-                    "exchangeRt": "1",
+                    "currencyTyCd": base_data["currencyCd"],
+                    "exchangeRt": base_data["exchangeRt"],
                     "dbtRsnCd": "03",
                     "invcAdjustReason": "",
                     "itemList": processed_items
@@ -1126,8 +1151,31 @@ class DebitNote(ZRAClient):
                 lpo_number = sell_data.get("custom_lpo_number")
                 is_lpo_transactions = sell_data.get("custom__lpo_transaction")
                 is_export = sell_data.get("custom_export")
+                currency = sell_data.get("custom_sale_currency_")
+                exchangeRt = sell_data.get("custom_rate")
                 if export_destination_country == "ASCENSION ISLAND":
                     export_destination_country = " "
+
+
+                currencies = [
+                {"code": "ZMW", "name": "Zambian kwacha"},
+                {"code": "USD", "name": "United States Dollar"},
+                {"code": "ZAR", "name": "South African Rand"},
+                {"code": "GBP", "name": "Pound Sterling"},
+                {"code": "CNY", "name": "Chinese Yuan"},
+                {"code": "EUR", "name": "Euro"},
+                ]
+
+                currency_dict = {currency["name"]: currency["code"] for currency in currencies}
+        
+                currencyCd = None
+                if currency in currency_dict:
+                    currencyCd = currency_dict[currency]
+                else:
+                    frappe.throw(f"Currency name '{currency}' not found.")
+
+                if exchangeRt is None:
+                    frappe.throw(f"Exchange rate for Currency name '{currency}' not found.")
 
 
                 sell_data_item = sell_data.get("items")
@@ -1206,6 +1254,8 @@ class DebitNote(ZRAClient):
                     "cust_name": customer_name,
                     "cust_tpin": customer_tpin,
                     "original_sell": original_sell,
+                    "currencyCd": currencyCd,
+                    "exchangeRt": exchangeRt,
                 }
 
                 if is_export == 1 or vatCd == "C1":
