@@ -199,8 +199,8 @@ class NormaSale(ZRAClient):
             "modrId": "admin",
             "modrNm": "admin",
             "saleCtyCd": "1",
-            "currencyTyCd": "ZMW",
-            "exchangeRt": "1",
+            "currencyTyCd": base_data["currencyCd"],
+            "exchangeRt": base_data["exchangeRt"],
             "dbtRsnCd": "",
             "invcAdjustReason": "",
             "itemList": processed_items
@@ -242,9 +242,33 @@ class NormaSale(ZRAClient):
         is_export = sell_data.get("custom_export")
         is_rvat_agent = sell_data.get("custom_rvat")
         principal_id = sell_data.get("custom_principal_id")
+        currency = sell_data.get("custom_sale_currency_")
+        exchangeRt = sell_data.get("custom_rate")
+
         if export_destination_country == "ASCENSION ISLAND":
             export_destination_country = " "
         
+        currencies = [
+            {"code": "ZMW", "name": "Zambian kwacha"},
+            {"code": "USD", "name": "United States Dollar"},
+            {"code": "ZAR", "name": "South African Rand"},
+            {"code": "GBP", "name": "Pound Sterling"},
+            {"code": "CNY", "name": "Chinese Yuan"},
+            {"code": "EUR", "name": "Euro"},
+        ]
+
+        currency_dict = {currency["name"]: currency["code"] for currency in currencies}
+ 
+        currencyCd = None
+        if currency in currency_dict:
+            currencyCd = currency_dict[currency]
+        else:
+            frappe.throw(f"Currency name '{currency}' not found.")
+
+        if exchangeRt is None:
+            frappe.throw(f"Exchange rate for Currency name '{currency}' not found.")
+
+
 
 
         sell_data_item = sell_data.get("items")
@@ -324,6 +348,9 @@ class NormaSale(ZRAClient):
             "cust_name": customer_name,
             "cust_tpin": customer_tpin,
             "name": name,
+            "currencyCd": currencyCd,
+            "exchangeRt": exchangeRt
+
             
         }
         if is_export == 1 or vatCd == "C1":

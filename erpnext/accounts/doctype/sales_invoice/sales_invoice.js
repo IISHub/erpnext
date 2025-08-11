@@ -1151,6 +1151,7 @@ frappe.ui.form.on("Sales Invoice", {
         frm.trigger("toggle_return_is_debit_note");
         frm.trigger("toggle_export_fields");
         frm.trigger("toggle_rvat_agent");
+        frm.trigger("toggle_custom_sale_currency");
     },
 
     custom__lpo_transaction: function(frm) {
@@ -1175,37 +1176,93 @@ frappe.ui.form.on("Sales Invoice", {
 
     toggle_lpo_fields: function(frm) {
         const show = frm.doc.custom__lpo_transaction === 1;
-
         frm.toggle_display("custom_lpo_number", show);
         frm.set_df_property("custom_lpo_number", "reqd", show);
     },
 
     toggle_return_fields: function(frm) {
         const show = frm.doc.is_return === 1;
-
         frm.toggle_display("custom_reason", show);
         frm.set_df_property("custom_reason", "reqd", show);
     },
 
     toggle_return_is_debit_note: function(frm) {
         const show = frm.doc.is_debit_note === 1;
-
         frm.toggle_display("custom_reason", show);
         frm.set_df_property("custom_reason", "reqd", show);
     },
 
     toggle_export_fields: function(frm) {
         const show = frm.doc.custom_export === 1;
-
         frm.toggle_display("custom_destination_country", show);
         frm.set_df_property("custom_destination_country", "reqd", show);
     },
 
     toggle_rvat_agent: function(frm) {
         const show = frm.doc.custom_rvat === 1;
-
         frm.toggle_display("custom_principal_id", show);
         frm.set_df_property("custom_principal_id", "reqd", show);
+    },
+});
+
+frappe.ui.form.on('Sales Invoice', {
+    refresh: function(frm) {
+        toggle_custom_rate(frm);
+    },
+    custom_sale_currency_: function(frm) {
+        toggle_custom_rate(frm);
     }
 });
+
+function toggle_custom_rate(frm) {
+
+    const currencyMap = {
+        "Zambian kwacha": "ZMW",
+        "Chinese Yuan": "CNY",
+        "South African Rand": "ZAR",
+        "Euro": "EUR",
+        "United States Dollar": "USD"
+    };
+
+    const selectedCurrency = frm.doc.custom_sale_currency_;
+    if (!selectedCurrency || !(selectedCurrency in currencyMap)) {
+        frm.set_df_property('custom_rate', 'hidden', 1);
+        frm.set_value('custom_rate', '');
+        return;
+    }
+
+    frm.set_df_property('custom_rate', 'hidden', 0);
+
+    const fromCurrency = "ZMW";
+    const toCurrency = currencyMap[selectedCurrency];
+
+    if (fromCurrency === toCurrency) {
+
+        frm.set_value('custom_rate', 1);
+        return;
+    }
+
+    const APIKEY = "b4340d6901-a8ce97c5a1-t0tpx8";
+    const url = `https://api.beta.fastforex.io/fetch-one?from=${fromCurrency}&to=${toCurrency}`;
+
+    fetch(url, {
+        method: "GET",
+        headers: {
+            "X-API-Key": APIKEY
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.result && data.result[toCurrency]) {
+            frm.set_value('custom_rate', data.result[toCurrency]);
+        } else {
+            frappe.msgprint(`Exchange rate retrieval failed. Ensure you have a stable network connection.`);
+            frm.set_value('custom_rate', '');
+        }
+    })
+    .catch(error => {
+        frappe.msgprint(`Unable to get exchange rate. Please verify your internet connection`);
+        frm.set_value('custom_rate', '');
+    });
+}
 
