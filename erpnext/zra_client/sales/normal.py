@@ -208,8 +208,8 @@ class NormaSale(ZRAClient):
                 "itemNm": "Test Item C1",
                 "qty": 1.0,
                 "prc": 100.00,
-                "vatCatCd": "A",
-                "iplCatCd": None,
+                "vatCatCd": None,
+                "iplCatCd": "IPL1",
                 "tlCatCd": None,
                 "exciseTxCatCd": None
             }

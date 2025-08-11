@@ -148,7 +148,14 @@ class NormaSale(ZRAClient):
 
             processed_items.append(processed_item)
 
-        total_taxable_amount = round(sum(item["vatTaxblAmt"] for item in processed_items), 2)
+        total_taxable_amount = round(sum(
+            item.get("vatTaxblAmt", 0.0)
+            + item.get("iplTaxblAmt", 0.0)
+            + item.get("tlTaxblAmt", 0.0)
+            + item.get("ecmTaxblAmt", 0.0)
+            for item in processed_items
+        ), 2)
+
         total_tax_amount = round(sum(
             item["vatAmt"] + item["iplAmt"] + item["tlAmt"] + item["ecmAmt"]
             for item in processed_items
@@ -213,17 +220,17 @@ class NormaSale(ZRAClient):
         return payload
 
     def generate_tax_fields(self):
-        return {
-            f"taxblAmt{k}": round(self.taxbl_totals.get(k, 0.0), 2)
-            for k in self.TAX_RATES
-        } | {
-            f"taxRt{k}": self.TAX_RATES.get(k, 0)
-            for k in self.TAX_RATES
-        } | {
-            f"taxAmt{k}": round(self.tax_amt_totals.get(k, 0.0), 2)
-            for k in self.TAX_RATES
-        }
-    
+        def fix_key(k):
+            if k.upper() == "RVAT":
+                return "Rvat"
+            return k.capitalize()
+
+        taxblAmt = {f"taxblAmt{fix_key(k)}": round(self.taxbl_totals.get(k, 0.0), 2) for k in self.TAX_RATES}
+        taxRt = {f"taxRt{fix_key(k)}": self.TAX_RATES.get(k, 0) for k in self.TAX_RATES}
+        taxAmt = {f"taxAmt{fix_key(k)}": round(self.tax_amt_totals.get(k, 0.0), 2) for k in self.TAX_RATES}
+
+        return {**taxblAmt, **taxRt, **taxAmt}
+
     def send_sale_data(self, sell_data):
         customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
         name = sell_data.get("name")
@@ -244,16 +251,23 @@ class NormaSale(ZRAClient):
         items = []
         for item in sell_data_item:
 
+            
             itemCd = item.get("item_code")
             item_doc = frappe.get_doc("Item", itemCd)
             formatted_items = item_doc.as_dict()
             package_unit_code = formatted_items.get("custom_packaging_unit_code")
             unit_of_measure = formatted_items.get("custom_units_of_measure")
+            item_class_name = formatted_items.get("custom_item_class_code")
+
+            if not item_class_name:
+                frappe.throw(f"Item classification code missing for item")
+
             get_ipl_name = item.get("custom_ipl")
             get_tl_name = item.get("custom_tl")
             get_excise_name = item.get("custom_excise")
             get_turn_over_tax = item.get("custom_tot")
             get_vat_name = item.get("custom_test")
+            item_price = sell_data['items'][0]['rate']
 
             tlCat = {
                 "TL":"Tourism Levy",
@@ -294,10 +308,10 @@ class NormaSale(ZRAClient):
 
             items.append({
                 "itemCd": itemCd,
-                "itemClsCd": "50101101",         
+                "itemClsCd": self.get_classification_code(item_class_name),         
                 "itemNm": itemName,
                 "qty": qty,
-                "prc": 100.00,
+                "prc": item_price,
                 "pkgUnitCd": self.get_packaging_unit(package_unit_code),
                 "qtyUnitCd": self.get_units_of_measure(unit_of_measure),                
                 "vatCatCd": vatCd,                
@@ -674,13 +688,17 @@ class CreditNote(ZRAClient):
                 itemCd = item.get("item_code")
                 item_doc = frappe.get_doc("Item", itemCd)
                 formatted_items = item_doc.as_dict()
+                item_price = sell_data['items'][0]['rate']
                 package_unit_code = formatted_items.get("custom_packaging_unit_code")
                 unit_of_measure = formatted_items.get("custom_units_of_measure")
+                item_class_name = formatted_items.get("custom_item_class_code")
                 get_ipl_name = item.get("custom_ipl")
                 get_tl_name = item.get("custom_tl")
                 get_excise_name = item.get("custom_excise")
                 get_turn_over_tax = item.get("custom_tot")
                 get_vat_name = item.get("custom_test")
+                item_price = sell_data['items'][0]['rate']
+
                 
            
         
@@ -696,8 +714,6 @@ class CreditNote(ZRAClient):
                     "IPL2": "Re-Insurance"
                 }
 
-                
-        
                 vat_tax_types = {
                     "A": "Standard Rated 16%",
                     "B": "Minimum Taxable Value (MTV)",
@@ -726,10 +742,10 @@ class CreditNote(ZRAClient):
 
                 items.append({
                     "itemCd": itemCd,
-                    "itemClsCd": "50101101",         
+                    "itemClsCd": self.get_classification_code(item_class_name),         
                     "itemNm": itemName,
                     "qty": qty,
-                    "prc": 100.00,
+                    "prc": item_price,
                     "pkgUnitCd": self.get_packaging_unit(package_unit_code),
                     "qtyUnitCd": self.get_units_of_measure(unit_of_measure),                
                     "vatCatCd": vatCd,                
@@ -1096,11 +1112,14 @@ class DebitNote(ZRAClient):
                     formatted_items = item_doc.as_dict()
                     package_unit_code = formatted_items.get("custom_packaging_unit_code")
                     unit_of_measure = formatted_items.get("custom_units_of_measure")
+                    item_class_name = formatted_items.get("custom_item_class_code")
                     get_ipl_name = item.get("custom_ipl")
                     get_tl_name = item.get("custom_tl")
                     get_excise_name = item.get("custom_excise")
                     get_turn_over_tax = item.get("custom_tot")
                     get_vat_name = item.get("custom_test")
+                    item_price = sell_data['items'][0]['rate']
+                    
 
             
                     tlCat = {
@@ -1144,10 +1163,10 @@ class DebitNote(ZRAClient):
 
                     items.append({
                         "itemCd": itemCd,
-                        "itemClsCd": "50101101",         
+                        "itemClsCd": self.get_classification_code(item_class_name),         
                         "itemNm": itemName,
                         "qty": qty,
-                        "prc": 100.00,
+                        "prc": item_price,
                         "pkgUnitCd": self.get_packaging_unit(package_unit_code),
                         "qtyUnitCd": self.get_units_of_measure(unit_of_measure),                
                         "vatCatCd": vatCd,                
