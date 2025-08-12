@@ -512,48 +512,66 @@ class ZRAClient:
         
     def save_purchase_manually(self, payload):
         try:
-            response = requests.post(self.save_purchase_url, json=payload, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-            print("Response status code:", response.status_code)
-            print("Response JSON:", data)
-            return data
+            response = requests.post(self.save_purchase_url, json=payload, timeout=10)
 
-        except requests.Timeout:
-            error_msg = "The request timed out. The server may be down or too slow to respond."
-            print("Timeout Error:", error_msg)
-            frappe.throw(f"Purchase save failed: {error_msg}")
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    print()
+                    if data.get("resultCd") != "000":
+                        full_msg = data.get("resultMsg", ERRORS["PURCHASE_ERROR"])
+                        if "[<principalId>] : provided is not found" in full_msg:
+                            RequestException("INVALID_PRINCIPAL_ID").throw()
 
-        except requests.ConnectionError as e:
-            error_msg = f"Connection error: {e}"
-            print("Connection Error:", error_msg)
-            frappe.throw(f"Purchase save failed: {error_msg}")
+                        RequestException("PURCHASE_ERROR").throw()
 
-        except requests.HTTPError as e:
-            response = e.response
-            status_code = response.status_code
-            try:
-                response_data = response.json()
-                error_msg = response_data.get("resultMsg", response.text)
-            except Exception:
-                error_msg = response.text or str(e)
+                    return data
 
-            if status_code == 400:
-                detailed_msg = f"Error saving purchase: {error_msg}"
-            elif status_code == 403:
-                detailed_msg = f"Forbidden (403): {error_msg}"
-            elif status_code == 404:
-                detailed_msg = f"Not Found (404): {error_msg}"
+                except ValueError:
+                    RequestException("UNKNOWN_RESPONSE").throw()
+
+            elif response.status_code == 400:
+                try:
+                    data = response.json()
+                    error_message = data.get("error", ERRORS["PURCHASE_ERROR"])
+                    frappe.throw(f"Could not save the purchase: {error_message}")
+                except ValueError:
+                    RequestException("UNKNOWN_RESPONSE").throw()
+
+            elif response.status_code == 403:
+                try:
+                    data = response.json()
+                    error_message = data.get("error", "Forbidden (403) access.")
+                    frappe.throw(f"Forbidden: {error_message}")
+                except ValueError:
+                    RequestException("HTTP_ERROR").throw()
+
+            elif response.status_code == 404:
+                try:
+                    data = response.json()
+                    error_message = data.get("error", "Not Found (404).")
+                    frappe.throw(f"Not Found: {error_message}")
+                except ValueError:
+                    RequestException("HTTP_ERROR").throw()
+
             else:
-                detailed_msg = f"HTTP Error {status_code}: {error_msg}"
+                RequestException("HTTP_ERROR").throw()
 
-            print("HTTP Error Response:", detailed_msg)
-            frappe.throw(f"Purchase save failed: {detailed_msg}")
+        except requests.exceptions.Timeout:
+            RequestException("TIMEOUT").throw()
 
-        except requests.RequestException as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            print("RequestException:", error_msg)
-            frappe.throw(f"Purchase save failed: {error_msg}")
+        except requests.exceptions.ConnectionError:
+            RequestException("CONNECTION").throw()
+
+        except requests.exceptions.HTTPError:
+            RequestException("HTTP_ERROR").throw()
+
+        except requests.exceptions.RequestException:
+            RequestException("REQUEST_FAILED").throw()
+
+        except Exception:
+            RequestException("UNEXPECTED_ERROR").throw()
+
 
 
         
