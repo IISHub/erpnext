@@ -1,3 +1,4 @@
+from erpnext.zra_client.error.exceptions import  RequestException, ERRORS
 import threading
 import time
 from urllib.parse import quote
@@ -555,54 +556,50 @@ class ZRAClient:
             frappe.throw(f"Purchase save failed: {error_msg}")
 
 
-
-
         
     def normal_sale(self, payload):
-        print("**** calling sale ***")
         try:
             response = requests.post(self.sale_url, json=payload, timeout=10)
-            print(" Raw response object:", response)
 
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    print("ZRA Response JSON:", data)
+                    print()
 
                     if data.get("resultCd") != "000":
-                        full_msg = data.get("resultMsg", "Something went wrong with your sale request.")
+                        full_msg = data.get("resultMsg", ERRORS["SALE_ERROR"])
 
                         if "[<principalId>] : provided is not found" in full_msg:
-                            frappe.throw("The provided principal ID was not found. Please check and try again.")
-                        frappe.throw(full_msg)
+                            RequestException("INVALID_PRINCIPAL_ID").throw()
+
+                        RequestException("SALE_ERROR").throw()
 
                     return data
 
                 except ValueError:
-                    frappe.throw("Received an unexpected response from the system. Please try again later.")
+                    RequestException("UNKNOWN_RESPONSE").throw()
 
             elif response.status_code == 400:
                 try:
                     data = response.json()
-                    error_message = data.get("error", "There was a problem with your sale submission.")
+                    error_message = data.get("error", ERRORS["SALE_ERROR"])
                     frappe.throw(f"Could not save the sale: {error_message}")
                 except ValueError:
-                    frappe.throw("Received an unexpected response from the system. Please try again later.")
+                    RequestException("UNKNOWN_RESPONSE").throw()
 
             else:
-                frappe.throw(f"Unexpected system error occurred (code {response.status_code}). Please try again later.")
+                RequestException("HTTP_ERROR").throw()
 
         except requests.exceptions.Timeout:
-            frappe.throw("The sale request took too long to process. Please try again in a few moments.")
+            RequestException("TIMEOUT").throw()
         except requests.exceptions.ConnectionError:
-            frappe.throw("Network problem detected. Please check your internet connection and try again.")
+            RequestException("CONNECTION").throw()
         except requests.exceptions.HTTPError:
-            frappe.throw("The system returned an error. Please try again later.")
+            RequestException("HTTP_ERROR").throw()
         except requests.exceptions.RequestException:
-            frappe.throw("There was an issue sending your request. Please try again.")
+            RequestException("REQUEST_FAILED").throw()
         except Exception:
-            frappe.throw("An unexpected error occurred. Please try again or contact support.")
-
+            RequestException("UNEXPECTED_ERROR").throw()
 
 
 
