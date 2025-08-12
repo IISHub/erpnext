@@ -561,7 +561,7 @@ class ZRAClient:
     def normal_sale(self, payload):
         print("**** calling sale ***")
         try:
-            response = requests.post(self.sale_url, json=payload)
+            response = requests.post(self.sale_url, json=payload, timeout=10)
             print(" Raw response object:", response)
 
             if response.status_code == 200:
@@ -570,33 +570,38 @@ class ZRAClient:
                     print("ZRA Response JSON:", data)
 
                     if data.get("resultCd") != "000":
-                        full_msg = data.get("resultMsg", "Unknown error")
+                        full_msg = data.get("resultMsg", "Something went wrong with your sale request.")
 
                         if "[<principalId>] : provided is not found" in full_msg:
-                            frappe.throw("Provide principal ID is not found")
+                            frappe.throw("The provided principal ID was not found. Please check and try again.")
                         frappe.throw(full_msg)
 
                     return data
 
                 except ValueError:
-                    frappe.throw(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+                    frappe.throw("Received an unexpected response from the system. Please try again later.")
 
             elif response.status_code == 400:
                 try:
                     data = response.json()
-                    error_message = data.get("error", "Unknown error")
-                    frappe.throw(f"Error saving normal sale: {error_message}")
+                    error_message = data.get("error", "There was a problem with your sale submission.")
+                    frappe.throw(f"Could not save the sale: {error_message}")
                 except ValueError:
-                    frappe.throw(f"ZRA Response is not valid JSON. Raw text: {response.text}")
+                    frappe.throw("Received an unexpected response from the system. Please try again later.")
 
             else:
-                frappe.throw(f"ZRA HTTP Error {response.status_code}: {response.text}")
+                frappe.throw(f"Unexpected system error occurred (code {response.status_code}). Please try again later.")
 
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Request failed: {e}")
-
-
-
+        except requests.exceptions.Timeout:
+            frappe.throw("The sale request took too long to process. Please try again in a few moments.")
+        except requests.exceptions.ConnectionError:
+            frappe.throw("Network problem detected. Please check your internet connection and try again.")
+        except requests.exceptions.HTTPError:
+            frappe.throw("The system returned an error. Please try again later.")
+        except requests.exceptions.RequestException:
+            frappe.throw("There was an issue sending your request. Please try again.")
+        except Exception:
+            frappe.throw("An unexpected error occurred. Please try again or contact support.")
 
 
 
