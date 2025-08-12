@@ -244,7 +244,7 @@ class ZRAClient:
 
     def create_item_zra(self, payload):
         try:       
-            response = requests.post(url=self.create_item_url, json=payload, timeout=70)
+            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
             response.raise_for_status() 
             print(response)
             return response.json()

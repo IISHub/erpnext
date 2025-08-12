@@ -1278,55 +1278,66 @@ function toggle_custom_rate(frm) {
         frm.set_value('custom_rate', '', null, {silent: true});
     });
 }
-frappe.ui.form.on("Sales Invoice", {
-    before_submit(frm) {
-        if (!$("#custom-spinner-modal").length) {
-            const spinner_html = `
-                <div id="custom-spinner-modal" class="modal" style="display:block; background: rgba(0,0,0,0.3); position: fixed; top:0; left:0; width:100%; height:100%; z-index: 10000;">
-                    <div style="
-                        position: absolute;
-                        top: 50%; left: 50%;
-                        transform: translate(-50%, -50%);
-                        background: #fff;
-                        padding: 20px 40px;
-                        border-radius: 8px;
-                        text-align: center;
-                        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-                    ">
-                        <div class="custom-spinner" style="
-                            border: 6px solid #f3f3f3;
-                            border-top: 6px solid #007bff;
-                            border-radius: 50%;
-                            width: 50px;
-                            height: 50px;
-                            animation: spin 1s linear infinite;
-                            margin: 0 auto 15px;
-                        "></div>
-                        <div style="font-size: 16px; color: #007bff;">Submitting Sales Invoice...</div>
-                    </div>
-                </div>
-            `;
 
-            $("body").append(spinner_html);
+// frappe.ui.form.on("Sales Invoice", {
+//     before_submit(frm) {
+//         // Create spinner modal if not exists
+//         if (!$("#custom-spinner-modal").length) {
+//             const spinner_html = `
+//                 <div id="custom-spinner-modal" class="modal" style="display:block; background: rgba(0,0,0,0.3); position: fixed; top:0; left:0; width:100%; height:100%; z-index: 10000;">
+//                     <div style="
+//                         position: absolute;
+//                         top: 50%; left: 50%;
+//                         transform: translate(-50%, -50%);
+//                         background: #fff;
+//                         padding: 20px 40px;
+//                         border-radius: 8px;
+//                         text-align: center;
+//                         box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+//                     ">
+//                         <div class="custom-spinner" style="
+//                             border: 6px solid #f3f3f3;
+//                             border-top: 6px solid #007bff;
+//                             border-radius: 50%;
+//                             width: 50px;
+//                             height: 50px;
+//                             animation: spin 1s linear infinite;
+//                             margin: 0 auto 15px;
+//                         "></div>
+//                         <div style="font-size: 16px; color: #007bff;">Submitting Sales Invoice...</div>
+//                     </div>
+//                 </div>
+//             `;
 
-            if (!$("#custom-spinner-style").length) {
-                $("<style id='custom-spinner-style'>@keyframes spin { 0% { transform: rotate(0deg);} 100% { transform: rotate(360deg);} }</style>").appendTo("head");
-            }
-        }
+//             $("body").append(spinner_html);
 
-        // Remove spinner quietly after 10 seconds (no message)
-        frm.spinner_timeout = setTimeout(() => {
-            $("#custom-spinner-modal").remove();
-        }, 10000);
-    },
+//             // Add spinner animation CSS if not present
+//             if (!$("#custom-spinner-style").length) {
+//                 $("<style id='custom-spinner-style'>@keyframes spin { 0% { transform: rotate(0deg);} 100% { transform: rotate(360deg);} }</style>").appendTo("head");
+//             }
+//         }
 
-    after_submit(frm) {
-        clearTimeout(frm.spinner_timeout);
-        $("#custom-spinner-modal").remove();
-    },
+//         // Set timeout to hide spinner after 10 seconds
+//         frm.spinner_timeout = setTimeout(() => {
+//             $("#custom-spinner-modal").remove();
+//             frappe.msgprint({
+//                 title: __("Timeout"),
+//                 indicator: "orange",
+//                 message: __("Submission took too long and was stopped after 10 seconds."),
+//                 alert: true
+//             });
+//         }, 10000); // 10,000 milliseconds = 10 seconds
+//     },
 
-    on_submit_error(frm) {
-        clearTimeout(frm.spinner_timeout);
-        $("#custom-spinner-modal").remove();
-    }
-});
+//     after_submit(frm) {
+//         // Clear timeout and hide spinner if submit finishes earlier
+//         clearTimeout(frm.spinner_timeout);
+//         $("#custom-spinner-modal").remove();
+//     },
+
+//     on_submit_error(frm) {
+//         // Clear timeout and hide spinner on error
+//         clearTimeout(frm.spinner_timeout);
+//         $("#custom-spinner-modal").remove();
+//     }
+// });
