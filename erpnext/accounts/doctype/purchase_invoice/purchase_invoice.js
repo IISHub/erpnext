@@ -797,7 +797,6 @@ frappe.ui.form.on("Purchase Invoice", {
     }
 });
 
-// This listens to all AJAX requests and hides the spinner after save or submit
 $(document).ajaxComplete(function(event, xhr, settings) {
     if (
         settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||

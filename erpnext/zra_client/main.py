@@ -504,47 +504,34 @@ class ZRAClient:
         
     def save_purchase_manually(self, payload):
         try:
-            response = requests.post(self.save_purchase_url, json=payload, timeout=10)
+            response = requests.post(self.save_purchase_url, json=payload, timeout=30)
+
+            try:
+                data = response.json()
+            except ValueError:
+                RequestException("UNKNOWN_RESPONSE").throw()
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                    print()
-                    if data.get("resultCd") != "000":
-                        full_msg = data.get("resultMsg", ERRORS["PURCHASE_ERROR"])
-                        if "[<principalId>] : provided is not found" in full_msg:
-                            RequestException("INVALID_PRINCIPAL_ID").throw()
-
-                        RequestException("PURCHASE_ERROR").throw()
-
+                if data.get("resultCd") == "000":
+                    frappe.msgprint("Purchase saved successfully")
                     return data
-
-                except ValueError:
-                    RequestException("UNKNOWN_RESPONSE").throw()
+                else:
+                    full_msg = data.get("resultMsg", ERRORS.get("PURCHASE_ERROR", "Purchase error"))
+                    if "[<principalId>] : provided is not found" in full_msg:
+                        RequestException("INVALID_PRINCIPAL_ID").throw()
+                    RequestException("PURCHASE_ERROR").throw()
 
             elif response.status_code == 400:
-                try:
-                    data = response.json()
-                    error_message = data.get("error", ERRORS["PURCHASE_ERROR"])
-                    frappe.throw(f"Could not save the purchase: {error_message}")
-                except ValueError:
-                    RequestException("UNKNOWN_RESPONSE").throw()
+                error_message = data.get("error", ERRORS.get("PURCHASE_ERROR", "Purchase error"))
+                frappe.throw(f"Could not save the purchase: {error_message}")
 
             elif response.status_code == 403:
-                try:
-                    data = response.json()
-                    error_message = data.get("error", "Forbidden (403) access.")
-                    frappe.throw(f"Forbidden: {error_message}")
-                except ValueError:
-                    RequestException("HTTP_ERROR").throw()
+                error_message = data.get("error", "Forbidden (403) access.")
+                frappe.throw(f"Forbidden: {error_message}")
 
             elif response.status_code == 404:
-                try:
-                    data = response.json()
-                    error_message = data.get("error", "Not Found (404).")
-                    frappe.throw(f"Not Found: {error_message}")
-                except ValueError:
-                    RequestException("HTTP_ERROR").throw()
+                error_message = data.get("error", "Not Found (404).")
+                frappe.throw(f"Not Found: {error_message}")
 
             else:
                 RequestException("HTTP_ERROR").throw()
@@ -563,39 +550,38 @@ class ZRAClient:
 
         except Exception:
             RequestException("UNEXPECTED_ERROR").throw()
+
 
 
 
         
     def normal_sale(self, payload):
         try:
-            response = requests.post(self.sale_url, json=payload, timeout=10)
+            response = requests.post(self.sale_url, json=payload, timeout=30)
+
+            try:
+                data = response.json()
+                print(data)
+            except ValueError:
+                RequestException("UNKNOWN_RESPONSE").throw()
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                    print()
+                result_cd = data.get("resultCd")
+                result_msg = data.get("resultMsg", ERRORS.get("SALE_ERROR", "Sale error"))
 
-                    if data.get("resultCd") != "000":
-                        full_msg = data.get("resultMsg", ERRORS["SALE_ERROR"])
-
-                        if "[<principalId>] : provided is not found" in full_msg:
-                            RequestException("INVALID_PRINCIPAL_ID").throw()
-
-                        RequestException("SALE_ERROR").throw()
-
+                if result_cd == "000":
+                    frappe.msgprint("Sale added successfully.")
                     return data
 
-                except ValueError:
-                    RequestException("UNKNOWN_RESPONSE").throw()
+                elif result_cd == "924":
+                    frappe.throw(f"CIS Invoice number already exists.")
+                
+                else:
+                    RequestException("SALE_ERROR").throw()
 
             elif response.status_code == 400:
-                try:
-                    data = response.json()
-                    error_message = data.get("error", ERRORS["SALE_ERROR"])
-                    frappe.throw(f"Could not save the sale: {error_message}")
-                except ValueError:
-                    RequestException("UNKNOWN_RESPONSE").throw()
+                error_message = data.get("error", ERRORS.get("SALE_ERROR", "Sale error"))
+                frappe.throw(f"Could not save the sale: {error_message}")
 
             else:
                 RequestException("HTTP_ERROR").throw()
@@ -610,6 +596,7 @@ class ZRAClient:
             RequestException("REQUEST_FAILED").throw()
         except Exception:
             RequestException("UNEXPECTED_ERROR").throw()
+
 
 
     

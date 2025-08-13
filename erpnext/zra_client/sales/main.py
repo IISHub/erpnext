@@ -468,9 +468,6 @@ class NormaSale(ZRAClient):
             print(update_stock_payload, update_stock_master_items)
             self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
-            frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
-        else:
-            frappe.throw(f"Sale save failed: {response.get('resultMsg')}")
 
 
 
@@ -1064,7 +1061,13 @@ class DebitNote(ZRAClient):
 
                     processed_items.append(processed_item)
 
-                total_taxable_amount = sum(self.taxbl_totals.values())
+                total_taxable_amount = round(sum(
+                    item.get("vatTaxblAmt", 0.0)
+                    + item.get("iplTaxblAmt", 0.0)
+                    + item.get("tlTaxblAmt", 0.0)
+                    + item.get("ecmTaxblAmt", 0.0)
+                    for item in processed_items
+                ), 2)
                 total_tax_amount = sum(self.tax_amt_totals.values())
                 total_amount = round(total_taxable_amount + total_tax_amount, 2)
                 original_invoice_no = base_data["original_sell"]
@@ -1362,12 +1365,6 @@ class DebitNote(ZRAClient):
 
                     print(update_stock_payload, update_stock_master_items)
                     self.run_stock_update_in_background(update_stock_payload,  update_stock_master_payload, created_by)
-
-
-                    frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
-                else:
-                    frappe.throw(f"Sale save failed: {response.get('resultMsg')}")
-
 
 
 

@@ -115,8 +115,6 @@ class zraPurchase(ZRAClient):
 
         response_data = self.save_purchase_manually(payload)
         if response_data.get("resultCd") == "000":
-            frappe.msgprint(f"Purchase saved successfully: {response_data.get('resultMsg')}")
-
             ocrnDt = datetime.now().strftime("%Y%m%d")
             stock_items = []
             stock_master_items = []
@@ -413,11 +411,7 @@ class zraPurchase(ZRAClient):
 
         
             self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, modified_by)
-            
-            frappe.msgprint(f"Purchase saved successfully: {result_msg}")
-        else:
-            frappe.throw(f"Error saving Purchase: {result_msg}")
-
+    
 
 
 
