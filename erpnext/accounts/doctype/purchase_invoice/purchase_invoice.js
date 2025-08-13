@@ -786,3 +786,49 @@ frappe.ui.form.on("Purchase Invoice", {
         }
     }
 });
+
+
+frappe.ui.form.on("Purchase Invoice", {
+    before_submit(frm) {
+        showSpinner();
+    },
+    before_submit(frm) {
+        showSpinner();
+    }
+});
+
+// This listens to all AJAX requests and hides the spinner after save or submit
+$(document).ajaxComplete(function(event, xhr, settings) {
+    if (
+        settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||
+        settings.url.includes("/api/method/frappe.client.submit")
+    ) {
+        hideSpinner();
+    }
+});
+
+function showSpinner() {
+    if (!$("#sale-spinner-modal").length) {
+        $("body").append(`
+            <div id="sale-spinner-modal" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.3);
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                z-index: 9999;
+            ">
+                <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        `);
+    }
+}
+
+function hideSpinner() {
+    $("#sale-spinner-modal").remove();
+}
+

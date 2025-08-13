@@ -1279,65 +1279,45 @@ function toggle_custom_rate(frm) {
     });
 }
 
-// frappe.ui.form.on("Sales Invoice", {
-//     before_submit(frm) {
-//         // Create spinner modal if not exists
-//         if (!$("#custom-spinner-modal").length) {
-//             const spinner_html = `
-//                 <div id="custom-spinner-modal" class="modal" style="display:block; background: rgba(0,0,0,0.3); position: fixed; top:0; left:0; width:100%; height:100%; z-index: 10000;">
-//                     <div style="
-//                         position: absolute;
-//                         top: 50%; left: 50%;
-//                         transform: translate(-50%, -50%);
-//                         background: #fff;
-//                         padding: 20px 40px;
-//                         border-radius: 8px;
-//                         text-align: center;
-//                         box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-//                     ">
-//                         <div class="custom-spinner" style="
-//                             border: 6px solid #f3f3f3;
-//                             border-top: 6px solid #007bff;
-//                             border-radius: 50%;
-//                             width: 50px;
-//                             height: 50px;
-//                             animation: spin 1s linear infinite;
-//                             margin: 0 auto 15px;
-//                         "></div>
-//                         <div style="font-size: 16px; color: #007bff;">Submitting Sales Invoice...</div>
-//                     </div>
-//                 </div>
-//             `;
+frappe.ui.form.on("Sales Invoice", {
+    before_submit(frm) {
+        showSpinner();
+    },
+    before_submit(frm) {
+        showSpinner();
+    }
+});
 
-//             $("body").append(spinner_html);
+$(document).ajaxComplete(function(event, xhr, settings) {
+    if (
+        settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||
+        settings.url.includes("/api/method/frappe.client.submit")
+    ) {
+        hideSpinner();
+    }
+});
 
-//             // Add spinner animation CSS if not present
-//             if (!$("#custom-spinner-style").length) {
-//                 $("<style id='custom-spinner-style'>@keyframes spin { 0% { transform: rotate(0deg);} 100% { transform: rotate(360deg);} }</style>").appendTo("head");
-//             }
-//         }
+function showSpinner() {
+    if (!$("#sale-spinner-modal").length) {
+        $("body").append(`
+            <div id="sale-spinner-modal" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.3);
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                z-index: 9999;
+            ">
+                <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        `);
+    }
+}
 
-//         // Set timeout to hide spinner after 10 seconds
-//         frm.spinner_timeout = setTimeout(() => {
-//             $("#custom-spinner-modal").remove();
-//             frappe.msgprint({
-//                 title: __("Timeout"),
-//                 indicator: "orange",
-//                 message: __("Submission took too long and was stopped after 10 seconds."),
-//                 alert: true
-//             });
-//         }, 10000); // 10,000 milliseconds = 10 seconds
-//     },
-
-//     after_submit(frm) {
-//         // Clear timeout and hide spinner if submit finishes earlier
-//         clearTimeout(frm.spinner_timeout);
-//         $("#custom-spinner-modal").remove();
-//     },
-
-//     on_submit_error(frm) {
-//         // Clear timeout and hide spinner on error
-//         clearTimeout(frm.spinner_timeout);
-//         $("#custom-spinner-modal").remove();
-//     }
-// });
+function hideSpinner() {
+    $("#sale-spinner-modal").remove();
+}

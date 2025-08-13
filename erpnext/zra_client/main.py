@@ -215,7 +215,7 @@ class ZRAClient:
             frappe.throw("Payload cannot be empty.")
 
         try:
-            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
+            response = requests.post(url=self.create_item_url, json=payload, timeout=30)
             response.raise_for_status()
 
             try:
@@ -248,7 +248,7 @@ class ZRAClient:
     
     def create_customer(self, payload):
         try:
-            response = requests.post(self.create_customer_url, json=payload, timeout=10)
+            response = requests.post(self.create_customer_url, json=payload, timeout=30)
             response.raise_for_status()
 
             try:
