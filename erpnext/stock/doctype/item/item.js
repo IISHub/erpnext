@@ -1076,4 +1076,43 @@ function handle_import_fields(frm) {
     }
 }
 
+frappe.ui.form.on("Item", {
+    before_save(frm) {
+        showSpinner();
+    },
+    before_submit(frm) {
+        showSpinner();
+    }
+});
 
+$(document).ajaxComplete(function(event, xhr, settings) {
+    if (settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||
+        settings.url.includes("/api/method/frappe.client.submit")) {
+        hideSpinner();
+    }
+});
+
+function showSpinner() {
+    if (!$("#custom-spinner-modal").length) {
+        $("body").append(`
+            <div id="custom-spinner-modal" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.3);
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                z-index: 9999;
+            ">
+                <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        `);
+    }
+}
+
+function hideSpinner() {
+    $("#custom-spinner-modal").remove();
+}

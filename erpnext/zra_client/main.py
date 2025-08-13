@@ -1,4 +1,5 @@
 from erpnext.zra_client.error.exceptions import  RequestException, ERRORS
+from erpnext.zra_client.error.custom_exceptions import internal_api_error_check
 import threading
 import time
 from urllib.parse import quote
@@ -73,17 +74,80 @@ class ZRAClient:
                 print("[OK] Destination country provided for VAT Code 'C1'.")
     
     def get_country_code_by_name(self, country_name):
-        try:
-            res = requests.get(f"http://0.0.0.0:7000/country/{quote(country_name)}/", timeout=10)
+        if not country_name or country_name.strip() == "":
+            frappe.throw("Country name cannot be empty.")
+
+        def api_call():
+            url = f"http://0.0.0.0:7000/country/{quote(country_name)}/"
+            res = requests.get(url, timeout=10)
             res.raise_for_status()
-            country_code = res.json().get("code")
+            data = res.json()
+            country_code = data.get("code")
+            
             if not country_code:
                 frappe.throw(f"Country code not found for '{country_name}' from external API.")
+            
             return country_code
-        except requests.exceptions.Timeout:
-            frappe.throw(f"Timeout fetching country code for '{country_name}'.")
-        except requests.RequestException as e:
-            frappe.throw(f"Error fetching country code for '{country_name}' from external API: {e}")
+        return internal_api_error_check(api_call)
+    
+    def get_packaging_unit(self, packaging_name):
+        if not packaging_name or packaging_name.strip() == "":
+            frappe.throw("Packaging name cannot be empty.")
+
+        def api_call():
+            url = f"http://0.0.0.0:7000/packaging-unit-code/{quote(packaging_name)}/"
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            packaging_unit_code = data.get("code")
+            
+            if not packaging_unit_code:
+                frappe.throw(
+                    f"Packaging unit code not found for '{packaging_name}' from external API response: {data}"
+                )
+            
+            return packaging_unit_code
+
+        return internal_api_error_check(api_call)
+    
+    def get_classification_code(self, class_name):
+        if not class_name or class_name.strip() == "":
+            frappe.throw("Class name cannot be empty.")
+
+        def api_call():
+            encoded_class_code = quote(class_name)
+            url = f"http://0.0.0.0:7000/api/get-item-class-by-name/{encoded_class_code}/"
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            itemClsCd = data.get("itemClsCd")
+
+            if not itemClsCd:
+                frappe.throw(f"itemClsCd not found for '{class_name}' from external API.")
+
+            return itemClsCd
+
+        return internal_api_error_check(api_call)
+    
+
+    def get_units_of_measure(self, unit_name):
+        if not unit_name or unit_name.strip() == "":
+            frappe.throw("Unit name cannot be empty.")
+
+        def api_call():
+            encoded_unit_name = quote(unit_name)
+            url = f"http://0.0.0.0:7000/unitofmeasure/{encoded_unit_name}/"
+            res = requests.get(url, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+            unit_code = data.get("code")
+
+            if not unit_code:
+                frappe.throw(f"Unit code not found for '{unit_name}' from external API.")
+
+            return unit_code
+
+        return internal_api_error_check(api_call)
 
     def update_item_in_background(self, update_url, payload):
         def task():
@@ -143,148 +207,76 @@ class ZRAClient:
         thread = threading.Thread(target=background_task)
         thread.daemon = True  
         thread.start()
-
-    def get_packaging_unit(self, packaging_name):
-
-        if not packaging_name:
-            return None
-            
-        packaging_unit_code = None
-        try:
-            res = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{quote(packaging_name)}/", timeout=10)
-            res.raise_for_status()
-            response_data = res.json()
-            packaging_unit_code = response_data.get("code")
-            print(res)
-            
-            if not packaging_unit_code:
-                frappe.throw(f"Packaging unit code not found for '{packaging_name}' from external API response: {response_data}")
-                
-        except requests.exceptions.Timeout:
-            frappe.throw(f"Timeout fetching packaging unit code for '{packaging_name}'.")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Error fetching packaging unit code for '{packaging_name}' from external API: {e}")
-        except ValueError as e:
-        
-            frappe.throw(f"Invalid JSON response when fetching packaging unit code for '{packaging_name}': {e}")
-
     
     
-        return packaging_unit_code
-    
-    def get_classification_code(self, class_name):
-        try:
-            encoded_class_code = quote(class_name)
-            res = requests.get(f"http://0.0.0.0:7000/api/get-item-class-by-name/{encoded_class_code}/", timeout=10)
-        
-            res.raise_for_status()
-            data = res.json()
-            itemClsCd = data.get("itemClsCd")
-            
-            if not itemClsCd:
-                frappe.throw(f"itemClsCd not found for '{class_name}.")
-            
-            return itemClsCd
-
-        except requests.exceptions.Timeout:
-            frappe.throw(f"Timeout fetching item class code for '{class_name}'.")
-        except requests.exceptions.ConnectionError:
-            frappe.throw(f"Connection error while fetching item class code for '{class_name}'.")
-        except requests.exceptions.HTTPError as e:
-            frappe.throw(f"HTTP error while fetching item class code for '{class_name}': {e}")
-        except requests.exceptions.JSONDecodeError:
-            frappe.throw(f"Invalid JSON response received for '{class_name}'.")
-        except requests.RequestException as e:
-            frappe.throw(f"Error fetching item class code from external API for '{class_name}': {e}")
-        except Exception as e:
-            frappe.throw(f"Unexpected error occurred: {e}")
-
-    def get_units_of_measure(self, unit_name):
-        if not unit_name:
-            frappe.throw("Unit name cannot be empty.")
-        
-        qtyUnitCd = None
-        
-        try:
-            
-            encoded_unit_name = quote(unit_name)
-            url = f"http://0.0.0.0:7000/unitofmeasure/{encoded_unit_name}/"
-            
-            res = requests.get(url, timeout=10)
-            res.raise_for_status()
-            
-            response_data = res.json()
-            qtyUnitCd = response_data.get("code")
-            
-            if not qtyUnitCd:
-                frappe.throw(f"Unit code not found for '{unit_name}' from external API.")
-                
-        except requests.exceptions.Timeout:
-            frappe.throw(f"Timeout fetching unit code for '{unit_name}'. Please try again.")
-            
-        except requests.exceptions.HTTPError as e:
-            if res.status_code == 404:
-                frappe.throw(f"Unit '{unit_name}' not found in external API.")
-            else:
-                frappe.throw(f"HTTP error {res.status_code} fetching unit code for '{unit_name}': {e}")
-                
-        except requests.exceptions.ConnectionError:
-            frappe.throw(f"Connection error fetching unit code for '{unit_name}'. Please check your network connection.")
-            
-        except requests.exceptions.JSONDecodeError:
-            frappe.throw(f"Invalid JSON response received for unit '{unit_name}' from external API.")
-            
-        except requests.RequestException as e:
-            frappe.throw(f"Error fetching unit code for '{unit_name}' from external API: {e}")
-            
-        except Exception as e:
-            frappe.throw(f"Unexpected error fetching unit code for '{unit_name}': {e}")
-        
-        return qtyUnitCd
 
     def create_item_zra(self, payload):
-        try:       
-            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
-            response.raise_for_status() 
-            print(response)
-            return response.json()
-        
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to add item in ZRA due to network or API error: {e}")
-        except ValueError:
-            frappe.throw(f"Invalid JSON response from ZRA API during adding item.")
-
-    
-    def create_customer(self, tpin, customer_name, email_id, mobile_no, created_by):
-        if not self.tpin:
-            raise ValueError("TPIN is required.")
-        print("Creating customer with data:", tpin, customer_name, email_id, mobile_no, created_by)
-
-        payload = {
-            "tpin": TPIN,
-            "bhfId": BRANCH_CODE,
-            "custNo": mobile_no,      
-            "custTpin": tpin,      
-            "custNm": customer_name,              
-            "adrs": None,
-            "email":  email_id,
-            "faxNo": None,
-            "useYn": "Y",
-            "remark": None,
-            "regrNm": created_by,
-            "regrId": created_by,
-            "modrNm": created_by,
-            "modrId": created_by
-        }
-        print(payload)
+        if not payload:
+            frappe.throw("Payload cannot be empty.")
 
         try:
-            response = requests.post(self.create_customer_url, json=payload)
-            print("Status Code:", response.status_code)
-            print("Response:", response.text)
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API request failed: {e}")
+            response = requests.post(url=self.create_item_url, json=payload, timeout=10)
+            response.raise_for_status()
+
+            try:
+                data = response.json()
+            except ValueError:
+                raise RequestException("UNKNOWN_RESPONSE")
+
+            if data.get("resultCd") == "000":
+                frappe.msgprint("Item has been saved successfully.")
+                return data
+            else:
+                full_msg = data.get("resultMsg", ERRORS["UNEXPECTED_ERROR"])
+                if "[<principalId>] : provided is not found" in full_msg:
+                    raise RequestException("INVALID_PRINCIPAL_ID")
+                else:
+                    raise RequestException("REQUEST_FAILED")
+
+        except requests.exceptions.Timeout:
+            raise RequestException("TIMEOUT").throw()
+        except requests.exceptions.ConnectionError:
+            raise RequestException("CONNECTION").throw()
+        except requests.exceptions.HTTPError:
+            raise RequestException("HTTP_ERROR").throw()
+        except RequestException as e:
+            e.throw()
+        except Exception:
+            raise RequestException("UNEXPECTED_ERROR").throw()
+
+            
+    
+    def create_customer(self, payload):
+        try:
+            response = requests.post(self.create_customer_url, json=payload, timeout=10)
+            response.raise_for_status()
+
+            try:
+                data = response.json()
+                print(data)
+            except ValueError:
+                raise RequestException("UNKNOWN_RESPONSE")
+
+            if data.get("resultCd") == "000":
+                frappe.msgprint("Customer has been added successfully.")
+                return data
+            else:
+                full_msg = data.get("resultMsg", "Unexpected error")
+                if "[<principalId>] : provided is not found" in full_msg:
+                    raise RequestException("INVALID_PRINCIPAL_ID")
+                else:
+                    raise RequestException("REQUEST_FAILED")
+
+        except requests.exceptions.Timeout:
+            raise RequestException("TIMEOUT").throw()
+        except requests.exceptions.ConnectionError:
+            raise RequestException("CONNECTION").throw()
+        except requests.exceptions.HTTPError:
+            raise RequestException("HTTP_ERROR").throw()
+        except RequestException as e:
+            e.throw()
+        except Exception:
+            raise RequestException("UNEXPECTED_ERROR").throw()
 
     def update_item(self, **kwargs):
         item_class_code = kwargs.get("custom_item_class_code")
@@ -620,62 +612,6 @@ class ZRAClient:
             RequestException("UNEXPECTED_ERROR").throw()
 
 
-
-    def credit_sale(self, payload):
-        print("**** calling credit sale ***")
-        try:
-            response = requests.post(self.sale_url, json=payload)
-            print("Raw response object:", response)
-            print("Response Status Code:", response.status_code)
-
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    print("ZRA Response JSON:", data)
-
-                    if data.get("resultCd") != "000":
-                        raise Exception(f"ZRA Error {data.get('resultCd')}: {data.get('resultMsg')}")
-                    return data
-                except ValueError:
-                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
-                
-
-            elif response.status_code == 400:
-                try:
-                    data = response.json()
-                    print(data)
-                    error_message = data.get("error", "Unknown error")
-                    raise Exception(f"Error saving credit sale")   
-
-                except ValueError:
-                    raise Exception(f"ZRA Response is not valid JSON. Raw text: {response.text}")
-            else:
-                raise Exception(f"ZRA HTTP Error {response.status_code}: {response.text}")
-
-        except requests.RequestException as e:
-            frappe.log_error(title="Failed to send credit sale", message=str(e))
-            raise Exception(f"Network or connection error: {e}")
-        
-        
-        
-    def sale_debit_note(self, payload):
-        try:
-            response = requests.post(self.sale_url, json=payload)
-            print("Debit note response status:", response.status_code)
-
-            if response.headers.get('Content-Type', '').startswith('application/json'):
-                resp_json = response.json()
-                print("📦 Response content:", resp_json)
-                return resp_json
-            else:
-                frappe.log_error(title="Debit note response not JSON",
-                                message=f"Content-Type: {response.headers.get('Content-Type')}")
-                return None
-
-        except requests.RequestException as e:
-            frappe.log_error(title="Failed to sale debit note", message=str(e))
-            raise Exception(f"Failed to normal sale: {e}")
-
     
  
     def zra_client_update_import(self, payload):
@@ -706,69 +642,7 @@ class ZRAClient:
         except ValueError:
             frappe.throw(_("Invalid response received from ZRA (not JSON)."))
     
-    def save_item_composition_zra_client(self, payload):
-        try:
-            response = requests.post(self.save_item_composition_url, payload)
-            response.raise_for_status()
-            results = 1
-
-        except requests.RequestException as e:
-            raise Exception("Failed to save item composition")
-    
-
-
-    def create_export_sale_zra_client(self, payload):
-        print("create export sale payload: ", payload)
-        try:
-            response = requests.post(self.sale_url, json=payload)
-            response.raise_for_status()
-            result = response.json()
-            print("Results for the response: ", result)
-            return response
-
-        except requests.HTTPError as http_err:
-            error_content = ""
-            if http_err.response is not None:
-                try:
-                    error_content = http_err.response.text
-                except Exception:
-                    error_content = "Could not read error response text."
-            
-            print("HTTP Error:", http_err)
-            print("Response content:", error_content)
-            raise Exception(f"Server Error\nException: Failed to save import sale\nResponse: {error_content}")
-
-        except requests.RequestException as e:
-
-            print("Request Exception:", e)
-            raise Exception(f"Server Error\nException: Failed to save import sale\nDetails: {str(e)}")
-        
-
-    def create_lpo_sale_zra_client(self, payload):
-        print("Creating LPO sale payload:", payload)
-        try:
-            response = requests.post(self.sale_url, json=payload)
-            response.raise_for_status()
-            result = response.json()
-            print("Results for the response:", result)
-            return response
-
-        except requests.HTTPError as http_err:
-            error_content = ""
-            if http_err.response is not None:
-                try:
-                    error_content = http_err.response.text
-                except Exception:
-                    error_content = "Could not read error response text."
-            
-            print("HTTP Error:", http_err)
-            print("Response content:", error_content)
-            raise Exception(f"Server Error\nException: Failed to save LPO sale\nResponse: {error_content}")
-
-        except requests.RequestException as e:
-            print("Request Exception:", e)
-            raise Exception(f"Server Error\nException: Failed to save LPO sale\nDetails: {str(e)}")
-
+   
         
 
     def get_principals_zra_client(self, payload):

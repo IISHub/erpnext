@@ -177,21 +177,24 @@ class Customer(TransactionBase):
 		if frappe.db.exists("Customer", {"custom_tpin": tpin}):
 			frappe.throw(_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin)))
 
-		# Attempt API call
-		try:
-			client = ZRAClient()
-			result = client.create_customer(tpin, customer_name, email_id, mobile_no, created_by)
-
-			if not result or result.get("resultCd") != "000":
-				error_message = result.get("resultMsg", "Unknown Error") if result else "No response from ZRA"
-				frappe.throw(_("{0}: {1}").format(
-					frappe.bold("Customer Sync Failed"),
-					frappe.bold(error_message)
-				))
-
-		except Exception as e:
-			frappe.log_error(frappe.get_traceback(), "ZRA API Sync Error")
-			frappe.throw(_("API call failed: {0}").format(frappe.bold(str(e))))
+		zra_client = ZRAClient()
+		payload = {
+            "tpin": zra_client.get_tpin(),
+            "bhfId": zra_client.get_branch_code(),
+            "custNo": mobile_no,      
+            "custTpin": tpin,      
+            "custNm": customer_name,              
+            "adrs": None,
+            "email":  email_id,
+            "faxNo": None,
+            "useYn": "Y",
+            "remark": None,
+            "regrNm": created_by,
+            "regrId": created_by,
+            "modrNm": created_by,
+            "modrId": created_by
+        }
+		result = zra_client.create_customer(payload)
 
 
 
