@@ -674,3 +674,11 @@ doc_events = {
 doctype_list_js = {
     "Purchase Invoice": "erpnext/accounts/doctype/purchase_invoice/purchase_invoice_list.js"
 }
+
+scheduler_events = {
+    "cron": {
+        "*/5 * * * *": [
+            "erpnext.background_tasks.customer_tasks.enqueue_process_pending_customers"
+        ]
+    }
+}

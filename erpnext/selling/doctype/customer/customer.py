@@ -155,8 +155,8 @@ class Customer(TransactionBase):
 
 		tpin = customer_data.get("custom_tpin")
 		customer_name = self.get("customer_name") or ""
-		email_id = self.get("email_id") or ""
-		mobile_no = self.get("mobile_no") or ""
+		email_id = self.get("custom_customer_email") or ""
+		mobile_no = self.get("custom_customer_number") or ""
 		created_by = customer_data.get("modified_by")
 
 		# Validate TPIN
@@ -194,6 +194,7 @@ class Customer(TransactionBase):
             "modrNm": created_by,
             "modrId": created_by
         }
+		print(payload)
 		result = zra_client.create_customer(payload)
 
 

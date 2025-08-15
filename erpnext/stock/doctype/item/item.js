@@ -1116,3 +1116,14 @@ function showSpinner() {
 function hideSpinner() {
     $("#custom-spinner-modal").remove();
 }
+
+// Hide the field
+frappe.ui.form.on("Item", {
+    onload(frm) {
+  
+        frm.set_df_property('item_code', 'hidden', 1);
+
+    
+    }
+});
+

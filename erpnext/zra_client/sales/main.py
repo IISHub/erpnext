@@ -471,6 +471,7 @@ class NormaSale(ZRAClient):
 
 
 
+
 class CreditNote(ZRAClient):
         def __init__(self):
             self.taxbl_totals = {key: 0.0 for key in self.TAX_RATES}
@@ -917,9 +918,6 @@ class CreditNote(ZRAClient):
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
 
-                frappe.msgprint(f"Sale made successfully: {response.get('resultMsg')}")
-            else:
-                frappe.throw(f"Sale save failed: {response.get('resultMsg')}")
 
 
 class DebitNote(ZRAClient):
@@ -1365,6 +1363,8 @@ class DebitNote(ZRAClient):
 
                     print(update_stock_payload, update_stock_master_items)
                     self.run_stock_update_in_background(update_stock_payload,  update_stock_master_payload, created_by)
+   
+
 
 
 

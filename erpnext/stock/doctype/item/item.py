@@ -6,6 +6,7 @@ import json
 import random
 import requests
 from erpnext.zra_client.imports.main import Imports
+from erpnext.zra_client.item.main import zraItem
 import frappe
 from urllib.parse import quote
 from frappe import _, bold
@@ -334,7 +335,8 @@ class Item(Document):
 		print("Payload being sent:", json.dumps(payload, indent=2))
 
 		item_obj = zraItem()
-		item_obj.create_item_helper(payload)
+		item_obj.create_item_zra(payload)
+
 
 		
 
@@ -402,9 +404,8 @@ class Item(Document):
 				import_obj = Imports()
 				import_obj.update_import(data)
 			else:
-				zra_obj = ZRAClient()
-				print(data)
-				zra_obj.update_item(**data)
+				item_obj = zraItem()
+				item_obj.update_item(data)
 
 			print("************* Updating existing item ***********")
 

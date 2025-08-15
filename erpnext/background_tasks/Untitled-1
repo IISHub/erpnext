@@ -1,0 +1,1 @@
+* * * * * /home/user/frappe-bench/env/bin/python /home/user/frappe-bench/apps/your_app/erpnext/background_tasks/run_pending_customers.py >> /home/user/frappe-bench/logs/pending_customers.log 2>&1

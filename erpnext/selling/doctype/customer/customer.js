@@ -305,3 +305,29 @@ function showSpinner() {
 function hideSpinner() {
     $("#custom-spinner-modal").remove();
 }
+
+// Form default value
+frappe.ui.form.on("Customer", {
+    refresh(frm) {
+        if (!frm.doc.custom_submission_status || frm.doc.custom_submission_status === 0 || frm.doc.custom_submission_status === "0") {
+            console.log("custom_submission_status is empty or 0 → setting to Pending");
+            frm.set_df_property("custom_submission_status", "options", ["Pending"]);
+            frm.set_value("custom_submission_status", "Pending");
+        } else {
+            console.log("custom_submission_status has value:", frm.doc.custom_submission_status);
+        }
+    }
+});
+
+
+frappe.listview_settings['Customer'] = {
+    formatters: {
+        custom_submission_status: function(value, row, column, data) {
+            console.log("ListView formatter triggered for:", value); // test log
+            if (value === 0 || value === "0" || !value) {
+                return `<span style="color: orange;">Pending</span>`;
+            }
+            return value;
+        }
+    }
+};
