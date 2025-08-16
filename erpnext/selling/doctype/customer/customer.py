@@ -202,7 +202,7 @@ class Customer(TransactionBase):
 			print(data)
 
 			if data.get("resultCd") == "000":
-				frappe.msgprint("Item has been saved successfully.")
+				frappe.msgprint("Customer has been saved successfully.")
 				return data
 			else:
 				RequestException("CREATE_ITEM_ERROR").throw()
