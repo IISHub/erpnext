@@ -1,7 +1,7 @@
 import requests
 import frappe
 
-def internal_api_error_check(api_func):
+def known_error_check(api_func):
     try:
         return api_func()
     except requests.exceptions.Timeout:

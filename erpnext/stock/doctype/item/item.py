@@ -5,6 +5,7 @@ import copy
 import json
 import random
 import requests
+from erpnext.zra_client.error.exceptions import RequestException
 from erpnext.zra_client.imports.main import Imports
 from erpnext.zra_client.item.main import zraItem
 import frappe
@@ -40,6 +41,16 @@ from erpnext.stock.doctype.item_default.item_default import ItemDefault
 from erpnext.stock.utils import get_valuation_method
 from erpnext.zra_client.item.main import zraItem
 from erpnext.zra_client.main import ZRAClient
+
+@frappe.whitelist()
+def get_item_classes(q=None):
+	import requests
+	url = f"http://127.0.0.1:7000/get-item-classes/?q={q}&page=1&page_size=50"
+	res = requests.get(url).json()
+
+	# Return as list of strings
+	return [item['itemClsNm'] for item in res.get('results', [])]
+
 class DuplicateReorderRows(frappe.ValidationError):
 	pass
 
@@ -160,6 +171,7 @@ class Item(Document):
 		self.set_onload("stock_exists", self.stock_ledger_created())
 		self.set_onload("asset_naming_series", get_asset_naming_series())
 		self.set_onload("current_valuation_method", get_valuation_method(self.name))
+
 
 
 
@@ -333,9 +345,23 @@ class Item(Document):
 		}
 
 		print("Payload being sent:", json.dumps(payload, indent=2))
+		zra_obj = zraItem()
+		response = zra_obj.create_item_zra(payload)
 
-		item_obj = zraItem()
-		item_obj.create_item_zra(payload)
+		try:
+			data = response.json()
+			print(data)
+
+			if data.get("resultCd") == "000":
+				frappe.msgprint("Item has been saved successfully.")
+				return data
+			else:
+				RequestException("CREATE_ITEM_ERROR").throw()
+
+		except ValueError:
+			RequestException("UNKNOWN_RESPONSE").throw()
+
+
 
 
 		
@@ -394,25 +420,29 @@ class Item(Document):
 		if not self.is_new():
 			self.old_item_group = frappe.db.get_value(self.doctype, self.name, "item_group")
 
+
+
 	def on_update(self):
-		if not getattr(self.flags, "_just_inserted", False):
-			print("****validating")
-			data = self.as_dict()
+		# Prevent updates for newly created items but allow save to continue
+		if getattr(self.flags, "in_insert", False) or getattr(self.flags, "_just_inserted", False) or self.is_new():
+			frappe.msgprint(".")
+			return
+		
+		data = self.as_dict()
 
-			print("** updating import item ***")
-			if data.get("custom_task_cd") or data.get("custom_dcl__de"):
-				import_obj = Imports()
-				import_obj.update_import(data)
-			else:
-				item_obj = zraItem()
-				item_obj.update_item(data)
-
+		if data.get("custom_task_cd") or data.get("custom_dcl__de"):
+			import_obj = Imports()
+			import_obj.update_import(data)
+			print("************* Updating import item ***********")
+		else:
+			item_obj = zraItem()
+			item_obj.update_item(data)
 			print("************* Updating existing item ***********")
 
-			self.update_variants()
-			self.update_item_price()
-		else:
-			print("************* Skipping update for newly inserted item ***********")
+		self.update_variants()
+		self.update_item_price()
+
+
 
 	def validate_description(self):
 		"""Clean HTML description if set"""

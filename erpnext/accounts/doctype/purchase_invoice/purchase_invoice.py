@@ -2,6 +2,7 @@
 # License: GNU General Public License v3. See license.txt
 
 
+from erpnext.zra_client.error.exceptions import RequestException
 import frappe
 from frappe import _, qb, throw
 from frappe.model.mapper import get_mapped_doc
@@ -745,10 +746,9 @@ class PurchaseInvoice(BuyingController):
 		purchase_data = self.as_dict()
 		purchase_invoice_name = purchase_data.get("name")
 		if purchase_invoice_name.startswith("SMART-INVOICE-PURCHASE"):
-			purchase_obj.create_purchase(purchase_data)
+			response_data = purchase_obj.create_purchase(purchase_data)
 		else:
-			purchase_obj.create_manual_purchase_invoice(purchase_data)
-
+			response_data = purchase_obj.create_manual_purchase_invoice(purchase_data)
 		self.check_prev_docstatus()
 
 		if self.is_return and not self.update_billed_amount_in_purchase_order:

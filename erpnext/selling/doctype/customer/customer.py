@@ -4,6 +4,7 @@
 
 import json
 
+from erpnext.zra_client.error.exceptions import RequestException
 from erpnext.zra_client.main import ZRAClient
 import frappe
 import frappe.defaults
@@ -196,6 +197,19 @@ class Customer(TransactionBase):
         }
 		print(payload)
 		result = zra_client.create_customer(payload)
+		try:
+			data = result.json()
+			print(data)
+
+			if data.get("resultCd") == "000":
+				frappe.msgprint("Item has been saved successfully.")
+				return data
+			else:
+				RequestException("CREATE_ITEM_ERROR").throw()
+
+		except ValueError:
+			RequestException("UNKNOWN_RESPONSE").throw()
+
 
 
 

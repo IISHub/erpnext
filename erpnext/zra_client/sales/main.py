@@ -16,7 +16,7 @@ class NormaSale(ZRAClient):
 
 
     def create_normal_sale_helper(self, payload):
-        return self.normal_sale(payload)
+        return self.create_sale_zra_client(payload)
 
     TAX_RATES = {
         "A": 16, "B": 16, "C1": 0, "C2": 0, "C3": 0,
@@ -392,6 +392,7 @@ class NormaSale(ZRAClient):
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
+        response = response.json()
         
         if response.get("resultCd") == "000":
             get_rcpt_no = response.get("data", {}).get("rcptNo")
@@ -479,7 +480,7 @@ class CreditNote(ZRAClient):
             super().__init__()
 
         def create_normal_sale_helper(self, payload):
-            return self.normal_sale(payload)
+            return self.create_sale_zra_client(payload)
 
         TAX_RATES = {
             "A": 16, "B": 16, "C1": 0, "C2": 0, "C3": 0,
@@ -839,7 +840,8 @@ class CreditNote(ZRAClient):
             print("\n[START] Sending sale data...")
             payload = self.build_payload(items, base_data)
             response = self.create_normal_sale_helper(payload)
-            
+            response = response.json()
+
             if response.get("resultCd") == "000":
                 get_rcpt_no = response.get("data", {}).get("rcptNo")
                 get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
@@ -927,7 +929,7 @@ class DebitNote(ZRAClient):
                 super().__init__()
 
             def create_normal_sale_helper(self, payload):
-                return self.normal_sale(payload)
+                return self.create_sale_zra_client(payload)
 
             TAX_RATES = {
                 "A": 16, "B": 16, "C1": 0, "C2": 0, "C3": 0,
@@ -1289,6 +1291,7 @@ class DebitNote(ZRAClient):
                 print("\n[START] Sending sale data...")
                 payload = self.build_payload(items, base_data)
                 response = self.create_normal_sale_helper(payload)
+                response = response.json()
                 
                 if response.get("resultCd") == "000":
                     get_rcpt_no = response.get("data", {}).get("rcptNo")

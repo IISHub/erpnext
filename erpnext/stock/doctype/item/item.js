@@ -1127,3 +1127,40 @@ frappe.ui.form.on("Item", {
     }
 });
 
+frappe.ui.form.on('Item', {
+    refresh(frm) {
+
+        let input = frm.fields_dict.custom_item_class_code.$wrapper.find('input');
+
+        // Debounce timer to avoid too many requests
+        let timer = null;
+
+        input.on('keyup', function() {
+            clearTimeout(timer);
+            let searchTerm = $(this).val().trim();
+            if (!searchTerm) return;
+
+            timer = setTimeout(() => {
+                let url = `http://127.0.0.1:7000/get-item-classes/?q=${encodeURIComponent(searchTerm)}&page=1&page_size=50`;
+
+                fetch(url)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.results || !data.results.length) {
+                            frm.fields_dict.custom_item_class_code.df.options = [];
+                            return;
+                        }
+
+                        // Extract names (or name + code if you prefer)
+                        let names = data.results.map(item => `${item.itemClsNm} (${item.itemClsCd})`);
+
+                        // Update the Autocomplete options
+                        frm.fields_dict.custom_item_class_code.df.options = names;
+
+                        // Frappe autocomplete listens automatically; no need to refresh_field
+                    })
+                    .catch(err => console.error("Error fetching item classes:", err));
+            }, 300); // 300ms debounce
+        });
+    }
+});

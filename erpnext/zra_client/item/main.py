@@ -9,6 +9,22 @@ from erpnext.zra_client.main import ZRAClient
 from frappe.utils import strip
 
 
+@frappe.whitelist()
+def get_item_classes(q=None):
+    if not q:
+        q = ""
+    url = f"http://127.0.0.1:7000/get-item-classes/?q={q}&page=1&page_size=50"
+    try:
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+    except Exception as e:
+        frappe.log_error(f"Failed to fetch item classes: {e}")
+        return []
+
+    return [item['itemClsNm'] for item in data.get('results', [])]
+
+
 class zraItem(ZRAClient):
 
     def update_item_helper(self, payload):
@@ -67,58 +83,6 @@ class zraItem(ZRAClient):
             frappe.throw("Missing required item details for ZRA update.")
 
 
-
-        # Get Classification code
-        item_class_code_stripped = item_class_code.strip()
-        try:
-            req = requests.get(f"{self.internal_base_url}/api/get-item-class-by-name/{item_class_code_stripped}/", timeout=5)
-            req.raise_for_status()
-            data = req.json()
-            itemClsCd = data.get("itemClsCd")
-            if not itemClsCd:
-                frappe.throw(f"Item classification code '{item_class_code_stripped}' not found in API response.")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to get item classification code for '{item_class_code_stripped}': {e}")
-        except ValueError: # Catches JSON decoding errors
-            frappe.throw(f"Invalid JSON response for item classification code '{item_class_code_stripped}'.")
-
-        # Country code API
-        try:
-            r = requests.get(f"{self.internal_base_url}/country/{origin_place}/", timeout=5)
-            r.raise_for_status()
-            country_code = r.json().get("code")
-            if not country_code:
-                frappe.throw(f"Country code for '{origin_place}' not found in API response.")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to get country code for '{origin_place}': {e}")
-        except ValueError:
-            frappe.throw(f"Invalid JSON response for country code '{origin_place}'.")
-
-        # Packaging unit code API
-        try:
-            r = requests.get(f"{self.internal_base_url}/packaging-unit-code/{packaging_unit}/", timeout=5)
-            r.raise_for_status()
-            packaging_unit_code = r.json().get("code")
-            if not packaging_unit_code:
-                frappe.throw(f"Packaging unit code for '{packaging_unit}' not found in API response.")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to get packaging unit code for '{packaging_unit}': {e}")
-        except ValueError:
-            frappe.throw(f"Invalid JSON response for packaging unit code '{packaging_unit}'.")
-
-        # Quantity unit code API
-        try:
-            r = requests.get(f"{self.internal_base_url}/unitofmeasure/{qty_unit}/", timeout=5)
-            r.raise_for_status()
-            qty_unit_code = r.json().get("code")
-            if not qty_unit_code:
-                frappe.throw(f"Quantity unit code for '{qty_unit}' not found in API response.")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(f"Failed to get quantity unit code for '{qty_unit}': {e}")
-        except ValueError:
-            frappe.throw(f"Invalid JSON response for quantity unit code '{qty_unit}'.")
-
-
         # Map product type
         itemTyCd = {"Raw Material": "1", "Finished Product": "2"}.get(product_type, "3")
 
@@ -137,7 +101,6 @@ class zraItem(ZRAClient):
         if not vatCatCd_code:
             frappe.throw(f"Invalid VAT category: '{vat_category}'. Please provide a valid VAT category.")
 
-        # IPL, TL, Excise categories (assuming these are fixed mappings based on the original code)
         iplCatCd = "IPL1" if ipl_category == "Insurance Premium Levy" else "IPL2"
         tlCatCd = "TL"
         exciseTxCatCd = "ECM" if excise_tax_category == "Excise on Coal" else "EXEEG"
@@ -150,20 +113,18 @@ class zraItem(ZRAClient):
             "tpin": self.tpin,
             "bhfId": self.branch_code,
             "itemCd": item_code,
-            "itemClsCd": itemClsCd,
+            "itemClsCd": self.get_classification_code(item_class_code),
             "itemTyCd": itemTyCd,
             "itemNm": item_name,
             "itemStdNm": item_name,
-            "orgnNatCd": country_code,
-            "pkgUnitCd": packaging_unit_code,
-            "qtyUnitCd": qty_unit_code,
+            "orgnNatCd": self.get_country_code_by_name(origin_place),
+            "pkgUnitCd": self.get_packaging_unit(packaging_unit),
+            "qtyUnitCd": self.get_units_of_measure(qty_unit),
             "vatCatCd": vatCatCd_code,
             "iplCatCd": iplCatCd,
             "tlCatCd": tlCatCd,
             "exciseTxCatCd": exciseTxCatCd,
             "dftPrc": price, 
-            "manufacturerTpin": self.tpin, 
-            "manufacturerItemCd": "1234",
             "rrp": "1000",
             "svcChargeYn": "Y",
             "rentalYn": "N",
@@ -179,7 +140,9 @@ class zraItem(ZRAClient):
 
         print("Sending payload:", payload)
 
-        self.update_item_in_background(self.update_url, payload)
+        self.update_item_zra_client(payload)
+
+        # self.update_item_in_background(self.update_url, payload)
 
 
         

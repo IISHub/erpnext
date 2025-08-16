@@ -1,5 +1,5 @@
 from erpnext.zra_client.error.exceptions import  RequestException, ERRORS
-from erpnext.zra_client.error.custom_exceptions import internal_api_error_check
+from erpnext.zra_client.error.custom_exceptions import known_error_check
 import threading
 import time
 from urllib.parse import quote
@@ -88,7 +88,7 @@ class ZRAClient:
                 frappe.throw(f"Country code not found for '{country_name}' from external API.")
             
             return country_code
-        return internal_api_error_check(api_call)
+        return known_error_check(api_call)
     
     def get_packaging_unit(self, packaging_name):
         if not packaging_name or packaging_name.strip() == "":
@@ -108,7 +108,7 @@ class ZRAClient:
             
             return packaging_unit_code
 
-        return internal_api_error_check(api_call)
+        return known_error_check(api_call)
     
     def get_classification_code(self, class_name):
         if not class_name or class_name.strip() == "":
@@ -127,7 +127,7 @@ class ZRAClient:
 
             return itemClsCd
 
-        return internal_api_error_check(api_call)
+        return known_error_check(api_call)
     
 
     def get_units_of_measure(self, unit_name):
@@ -147,7 +147,7 @@ class ZRAClient:
 
             return unit_code
 
-        return internal_api_error_check(api_call)
+        return known_error_check(api_call)
 
     def update_item_in_background(self, update_url, payload):
         def task():
@@ -211,247 +211,50 @@ class ZRAClient:
     
 
     def create_item_zra(self, payload):
-        if not payload:
-            frappe.throw("Payload cannot be empty.")
-
-        try:
-            response = requests.post(url=self.create_item_url, json=payload, timeout=300)
-            response.raise_for_status()
-
-            try:
-                data = response.json()
-            except ValueError:
-                raise RequestException("UNKNOWN_RESPONSE")
-
-            if data.get("resultCd") == "000":
-                frappe.msgprint("Item has been saved successfully.")
-                return data
-            else:
-                full_msg = data.get("resultMsg", ERRORS["UNEXPECTED_ERROR"])
-                if "[<principalId>] : provided is not found" in full_msg:
-                    raise RequestException("INVALID_PRINCIPAL_ID")
-                else:
-                    raise RequestException("REQUEST_FAILED")
-
-        except requests.exceptions.Timeout:
-            raise RequestException("TIMEOUT").throw()
-        except requests.exceptions.ConnectionError:
-            raise RequestException("CONNECTION").throw()
-        except requests.exceptions.HTTPError:
-            raise RequestException("HTTP_ERROR").throw()
-        except RequestException as e:
-            e.throw()
-        except Exception:
-            raise RequestException("UNEXPECTED_ERROR").throw()
-
-            
+        def call_create_item():    
+                response = requests.post(url=self.create_item_url, json=payload, timeout=300)
+                response.raise_for_status() 
+                return response 
+        return known_error_check(call_create_item)
+        
     
     def create_customer(self, payload):
-        try:
+        def call_create_customer():
             response = requests.post(self.create_customer_url, json=payload, timeout=300)
-            response.raise_for_status()
-
-            try:
-                data = response.json()
-                print(data)
-            except ValueError:
-                raise RequestException("UNKNOWN_RESPONSE")
-
-            if data.get("resultCd") == "000":
-                frappe.msgprint("Customer has been added successfully.")
-                return data
-            else:
-                full_msg = data.get("resultMsg", "Unexpected error")
-                if "[<principalId>] : provided is not found" in full_msg:
-                    raise RequestException("INVALID_PRINCIPAL_ID")
-                else:
-                    raise RequestException("REQUEST_FAILED")
-
-        except requests.exceptions.Timeout:
-            RequestException("TIMEOUT").throw()
-        except requests.exceptions.ConnectionError:
-            raise RequestException("CONNECTION").throw()
-        except requests.exceptions.HTTPError:
-            raise RequestException("HTTP_ERROR").throw()
-        except RequestException as e:
-            e.throw()
-        except Exception:
-            raise RequestException("UNEXPECTED_ERROR").throw()
-
+            response.raise_for_status() 
+            return response
+        return known_error_check(call_create_customer)
     
-    def save_stock(self, payload=None):
-        if payload is None:
-            frappe.throw("Payload is required to save stock")
 
-        for item in payload.get("itemList", []):
-            packaging_unit = item.get("pkgUnitCd")
-            qty_unit = item.get("qtyUnitCd")
-
-            try:
-                r = requests.get(f"http://0.0.0.0:7000/packaging-unit-code/{packaging_unit}/", timeout=5)
-                r.raise_for_status()
-                packaging_unit_code = r.json().get("code")
-                if not packaging_unit_code:
-                    raise ValueError("No code returned for packaging unit")
-            except Exception as e:
-                raise Exception(f"Packaging unit error ({packaging_unit}): {e}")
-
-            try:
-                r = requests.get(f"http://0.0.0.0:7000/unitofmeasure/{qty_unit}/", timeout=5)
-                r.raise_for_status()
-                qty_unit_code = r.json().get("code")
-                if not qty_unit_code:
-                    raise ValueError("No code returned for quantity unit")
-            except Exception as e:
-                raise Exception(f"Quantity unit error ({qty_unit}): {e}")
-
-            item["pkgUnitCd"] = packaging_unit_code
-            item["qtyUnitCd"] = qty_unit_code
-
-        try:
-            print("Saving stock payload: ", payload)
-            response = requests.post(self.save_stock_url, json=payload, timeout=70)
+    def create_purchase_zra_client(self, payload):
+        def call_create_purchase():
+            response = requests.post(self.save_purchase_url, json=payload, timeout=300)
             response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            raise Exception(f"Failed to save stock in ZRA: {e}")
-
-    def update_stock_zra_client(self, payload=None):
-        if payload is None:
-            frappe.throw("Payload is required to update stock after purchase")
-
-        try:
-            print("Updating stock after purchase payload: ", payload)
-            response = requests.post(self.save_stock_url, json=payload, timeout=70)
+            return response
+        return known_error_check(call_create_purchase)
+    
+    def create_sale_zra_client(self, payload):
+        def create_sale():
+            response = requests.post(self.sale_url, json=payload, timeout=300)
             response.raise_for_status()
-            print("Stock update response:", response.text)
-            return response.json()
-        except requests.RequestException as e:
-            raise Exception(f"Failed to update stock after purchase in ZRA: {e}")
-        
+            return response
+        return known_error_check(create_sale)
+    
+    def update_stock_zra_client(self, payload):
+        response = requests.post(self.save_stock_url, json=payload, timeout=70)
+        response.raise_for_status() 
+        return response.json()  
 
     def save_stock_master_zra_client(self, payload):
-        print("Now calling stock master")
-        try:
-            response = requests.post(self.save_stock_master_url, json=payload, timeout=300)
-            response.raise_for_status()
-            data = response.json()
-            return data
-        except requests.RequestException as e:
-            error_msg = f"Request failed for stock master: {str(e)}"
-            frappe.log_error(title="Stock Master Error", message=error_msg)
-            return {"status": "error", "message": error_msg}
+        response = requests.post(self.save_stock_master_url, json=payload, timeout=300)
+        response.raise_for_status()
+        return response.json()
 
 
 
 
 
-        
-    def save_purchase_manually(self, payload):
-        print(payload)
-        try:
-            response = requests.post(self.save_purchase_url, json=payload, timeout=300)
 
-            try:
-                data = response.json()
-                print(data)
-            except ValueError:
-                RequestException("UNKNOWN_RESPONSE").throw()
-
-            if response.status_code == 200:
-                if data.get("resultCd") == "000":
-                    frappe.msgprint("Purchase saved successfully")
-                    return data
-                else:
-                    full_msg = data.get("resultMsg", ERRORS.get("PURCHASE_ERROR", "Purchase error"))
-                    if "[<principalId>] : provided is not found" in full_msg:
-                        RequestException("INVALID_PRINCIPAL_ID").throw()
-                    RequestException("PURCHASE_ERROR").throw()
-
-            # if result_cd == "999":
-            #         frappe.throw("There is an unknown error. Please ask administrator")
-
-            elif response.status_code == 400:
-                error_message = data.get("error", ERRORS.get("PURCHASE_ERROR", "Purchase error"))
-                frappe.throw(f"Could not save the purchase: {error_message}")
-
-            elif response.status_code == 403:
-                error_message = data.get("error", "Forbidden (403) access.")
-                frappe.throw(f"Forbidden: {error_message}")
-
-            elif response.status_code == 404:
-                error_message = data.get("error", "Not Found (404).")
-                frappe.throw(f"Not Found: {error_message}")
-
-            else:
-                RequestException("HTTP_ERROR").throw()
-
-        except requests.exceptions.Timeout:
-            RequestException("TIMEOUT").throw()
-
-        except requests.exceptions.ConnectionError:
-            RequestException("CONNECTION").throw()
-
-        except requests.exceptions.HTTPError:
-            RequestException("HTTP_ERROR").throw()
-
-        except requests.exceptions.RequestException:
-            RequestException("REQUEST_FAILED").throw()
-
-        except Exception:
-            RequestException("UNEXPECTED_ERROR").throw()
-
-
-
-
-        
-    def normal_sale(self, payload):
-        try:
-            response = requests.post(self.sale_url, json=payload, timeout=300)
-
-            try:
-                data = response.json()
-                print(data)
-            except ValueError:
-                RequestException("UNKNOWN_RESPONSE").throw()
-
-            if response.status_code == 200:
-                result_cd = data.get("resultCd")
-                result_msg = data.get("resultMsg", ERRORS.get("SALE_ERROR", "Sale error"))
-
-                if result_cd == "000":
-                    frappe.msgprint("Sale added successfully.")
-                    return data
-                
-                if result_cd == "999":
-                    frappe.throw("There is an unknown error. Please ask administrator")
-
-                elif result_cd == "924":
-                    frappe.throw(f"CIS Invoice number already exists.")
-                
-                else:
-                    RequestException("SALE_ERROR").throw()
-
-            elif response.status_code == 400:
-                error_message = data.get("error", ERRORS.get("SALE_ERROR", "Sale error"))
-                frappe.throw(f"Could not save the sale: {error_message}")
-
-            else:
-                RequestException("HTTP_ERROR").throw()
-        except requests.exceptions.Timeout:
-            RequestException("TIMEOUT").throw()
-        except requests.exceptions.ConnectionError:
-            RequestException("CONNECTION").throw()
-        except requests.exceptions.HTTPError:
-            RequestException("HTTP_ERROR").throw()
-        except requests.exceptions.RequestException:
-            RequestException("REQUEST_FAILED").throw()
-        except Exception:
-            RequestException("UNEXPECTED_ERROR").throw()
-
-
-
-    
  
     def zra_client_update_import(self, payload):
         try:
@@ -504,6 +307,48 @@ class ZRAClient:
         except requests.RequestException as e:
             print("Request Exception:", e)
             raise Exception(f"Server Error\nException: Failed to save RVAT \nDetails: {str(e)}")
+        
+    def update_item_zra_client(self, payload):
+        try:
+            response = requests.post(self.update_url, json=payload, timeout=400)
+
+            try:
+                data = response.json()
+                print(data)
+            except ValueError:
+                RequestException("UNKNOWN_RESPONSE").throw()
+
+            if response.status_code == 200:
+                result_cd = data.get("resultCd")
+                result_msg = data.get("resultMsg", ERRORS.get("UPDATE_ITEM_ERROR", "Update error"))
+
+                if result_cd == "000":
+                    frappe.msgprint("Item updated added successfully.")
+                    return data
+                
+                if result_cd == "999":
+                    frappe.throw("There is an unknown error. Please ask administrator")
+
+                
+                else:
+                    RequestException("UPDATE_ITEM_ERROR").throw()
+
+            elif response.status_code == 400:
+                error_message = data.get("error", ERRORS.get("UPDATE_ITEM_ERROR", "Update error"))
+                frappe.throw(f"Could not save the sale: {error_message}")
+
+            else:
+                RequestException("HTTP_ERROR").throw()
+        except requests.exceptions.Timeout:
+            RequestException("TIMEOUT").throw()
+        except requests.exceptions.ConnectionError:
+            RequestException("CONNECTION").throw()
+        except requests.exceptions.HTTPError:
+            RequestException("HTTP_ERROR").throw()
+        except requests.exceptions.RequestException:
+            RequestException("REQUEST_FAILED").throw()
+        except Exception:
+            RequestException("UNEXPECTED_ERROR").throw()
 
 
 

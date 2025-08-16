@@ -461,23 +461,6 @@ class SalesInvoice(SellingController):
 		print(is_return, is_debit_note, is_export, is_lop, is_rvat)
 		print(sell_order)
 		
-
-		# if is_export:
-		# 	print("Calling the export sale")
-		# 	print(sell_order)
-		# 	sale_obj.create_export_sale_payload(sell_order)
-
-		# elif is_rvat:
-		# 	print("calling rvat")
-		# 	sale_obj.create_rvat_with_agent_sale(sell_order)
-
-
-		# elif is_lop == 1:
-		# 	print("******** Creating LPO sale ********")
-		# 	sale_obj.create_lpo_sale_transaction_payload(sell_order)
-
-
-
 		if is_return == 1:
 			print("**** Credit sale ****:", sell_order)
 			credit_note_obj = CreditNote()
