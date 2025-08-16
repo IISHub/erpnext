@@ -3,6 +3,7 @@ import frappe
 
 # Centralized error messages
 ERRORS = {
+    # General errors
     "TIMEOUT": "The request took too long to process. Please try again later.",
     "CONNECTION": "Network problem detected. Please check your internet connection and try again.",
     "INVALID_PRINCIPAL_ID": "The provided principal ID was not found. Please check and try again.",
@@ -15,6 +16,47 @@ ERRORS = {
     "UNEXPECTED_ERROR": "An unexpected error occurred. Please try again or contact support.",
     "UPDATE_ITEM_ERROR": "There was a problem with your update item submission. Please try again.",
     "CREATE_ITEM_ERROR": "There was a problem with your create item submission. Please try again.",
+
+    "000001": "It is succeeded. There is no search result.",
+    "801": "There is no data to retransmit.",
+    "802": "There is data that has not been transferred. After transfer is possible.",
+    "803": "This is a report that transfer is complete.",
+    "804": "There is no data to send for the report.",
+    "805": "Corresponding retransmission data exists.",
+    "834": "SalesType and ReceiptType must be NS-NR-ND-TS-TR-TD-CS-CR-CD-PS. Check your inputs. Your sequences have been altered, connect to ZRA API to get sequences.",
+    "838": "Connection to API is not established: check connection.",
+    "884": "Invalid customer TPIN was provided.",
+    "891": "An error occurred while Request URL is created.",
+    "892": "An error occurred while Request Header data is created.",
+    "893": "An error occurred while Request Body data is created.",
+    "894": "An error regarding server communication occurred.",
+    "895": "An error regarding unallowed Request Method occurred.",
+    "896": "An error regarding Request Status occurred.",
+    "899900": "An error regarding Client occurred. There is no Header information.",
+    "901": "It is not valid device.",
+    "902": "This device is installed.",
+    "903": "Only VSDC device can be verified.",
+    "910": "Request parameter error.",
+    "911": "There is no request full text.",
+    "912": "There is a request Method error.",
+    "913": "Code value error among request parameters.",
+    "131921": "Sales or sales invoice data which is declared cannot be received.",
+    "922": "Sales invoice data can be received after receiving the sales data.",
+    "924": "CIS Invoice number already exists.",
+    "930": "The specified invoice could not be found. Please verify [orgInvcNo] and try again.",
+    "931": "The credit note amount exceeds the original invoice amount for item.",
+    "932": "The item specified in the credit note does not exist on the original invoice. [itemCd]",
+    "934": "The quantity specified in the credit note exceeds the quantity in the original invoice.",
+    "935": "The credit note contains information that does not match the original invoice data.",
+    "990": "The maximum number of views are exceeded.",
+    "991": "There is an error during registration.",
+    "992": "There is an error during modification.",
+    "993": "There is an error during deletion.",
+    "994": "There is an overlapped data.",
+    "995": "There is no downloaded file.",
+    "999": "There is an unknown error. Please ask the administrator.",
+    "910": "Invalid Item Class Code",
+    '001': "There is no search result",
 }
 
 
@@ -27,28 +69,5 @@ class RequestException(Exception):
         super().__init__(self.message)
 
     def throw(self):
-        frappe.throw(self.message)
-
-
-def know_error_helper(func, error_code="UNEXPECTED_ERROR"):
-    try:
-        return func()
-
-    except requests.exceptions.Timeout:
-        raise RequestException("TIMEOUT")
-
-    except requests.exceptions.ConnectionError:
-        raise RequestException("CONNECTION")
-
-    except requests.exceptions.HTTPError as e:
-        frappe.log_error(title="HTTP Error", message=str(e))
-        raise RequestException("HTTP_ERROR")
-
-    except requests.exceptions.RequestException as e:
-        frappe.log_error(title="Request Failed", message=str(e))
-        raise RequestException("REQUEST_FAILED")
-
-    except Exception as e:
-        frappe.log_error(title="Unexpected Error", message=str(e))
-        raise RequestException(error_code)
-
+        full_message = f"{self.message}"
+        frappe.throw(full_message)

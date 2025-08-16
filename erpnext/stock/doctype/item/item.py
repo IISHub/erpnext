@@ -351,16 +351,22 @@ class Item(Document):
 		try:
 			data = response.json()
 			print(data)
+			result_cd = data.get("resultCd")
 
-			if data.get("resultCd") == "000":
+			if result_cd == "000":
 				frappe.msgprint("Item has been saved successfully.")
 				return data
 			else:
-				RequestException("CREATE_ITEM_ERROR").throw()
+				RequestException(result_cd or "CREATE_ITEM_ERROR").throw()
 
 		except ValueError:
 			RequestException("UNKNOWN_RESPONSE").throw()
 
+		except requests.exceptions.Timeout:
+			RequestException("TIMEOUT").throw()
+
+		except requests.exceptions.RequestException as e:
+			RequestException("REQUEST_FAILED").throw()
 
 
 
@@ -432,11 +438,54 @@ class Item(Document):
 
 		if data.get("custom_task_cd") or data.get("custom_dcl__de"):
 			import_obj = Imports()
-			import_obj.update_import(data)
+			response = import_obj.update_import(data)
+			try:
+
+				data = response.json()
+				print("Response data:", data)
+				result_cd = data.get("resultCd")
+				if result_cd == "000":
+					frappe.msgprint("Imported Item has been updated successfully.")
+					return data
+				else:
+					RequestException(result_cd or "UPDATE_ITEM_ERROR").throw()
+
+			except ValueError:
+				RequestException("UNKNOWN_RESPONSE").throw()
+
+			except requests.exceptions.Timeout:
+				RequestException("TIMEOUT").throw()
+
+			except requests.exceptions.RequestException as e:
+				RequestException("REQUEST_FAILED").throw()
+
 			print("************* Updating import item ***********")
 		else:
-			item_obj = zraItem()
-			item_obj.update_item(data)
+
+			item_obj = zraItem() 
+			response = item_obj.update_item(data) 
+
+			try:
+
+				data = response.json()
+				print("Response data:", data)
+				result_cd = data.get("resultCd")
+				if result_cd == "000":
+					frappe.msgprint("Item has been updated successfully.")
+					return data
+				else:
+					RequestException(result_cd or "UPDATE_ITEM_ERROR").throw()
+
+			except ValueError:
+				RequestException("UNKNOWN_RESPONSE").throw()
+
+			except requests.exceptions.Timeout:
+				RequestException("TIMEOUT").throw()
+
+			except requests.exceptions.RequestException as e:
+				RequestException("REQUEST_FAILED").throw()
+
+
 			print("************* Updating existing item ***********")
 
 		self.update_variants()

@@ -4,10 +4,11 @@ from frappe import throw, _
 from erpnext.zra_client.main import ZRAClient
 from datetime import datetime
 
+
 class Imports(ZRAClient):
     def __init__(self):
         super().__init__()
-        self.to_use_data = {}  
+        self.to_use_data = {}
 
     def get_tpin(self):
         return self.tpin
@@ -19,6 +20,7 @@ class Imports(ZRAClient):
         return self.zra_client_update_import(payload)
 
     def update_import(self, import_data):
+        # Extract required fields
         taskCd = import_data.get("custom_task_cd")
         modified_by = import_data.get("modified_by")
         get_class_code = import_data.get("custom_item_class_code")
@@ -30,6 +32,7 @@ class Imports(ZRAClient):
 
         status = 3 if get_status == "Approved" else 4
 
+        # Validate required fields
         if not all([taskCd, get_class_code, item_code]):
             throw(_("Missing required fields: 'custom_task_cd', 'custom_item_class_code', or 'name'."))
 
@@ -54,9 +57,11 @@ class Imports(ZRAClient):
 
         print("Payload to send to ZRA:", payload)
 
-        response = self.call_update_import(payload)
-
-        if response.get("resultCd") not in ["000", "001"]:
+        # Call the ZRA API
+        try:
+            response = self.call_update_import(payload)
+            if response.status_code == 200:
+                return response
             update_stock_items = []
             update_stock_master_items = []
 
@@ -79,7 +84,7 @@ class Imports(ZRAClient):
                     "totDcAmt": item.get("dcAmt", 0),
                 })
 
-                remaining_qty = 12
+                remaining_qty = 12  # adjust as needed
                 update_stock_master_items.append({
                     "itemCd": item.get("itemCd"),
                     "rsdQty": max(0, remaining_qty)
@@ -116,10 +121,13 @@ class Imports(ZRAClient):
                 "stockItemList": update_stock_master_items
             }
 
-            print(update_stock_payload, update_stock_master_items)
+            print("Update stock payload:", update_stock_payload)
+            print("Update stock master payload:", update_stock_master_payload)
 
+            # Run background stock update
             self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
-            frappe.msgprint("Imported item updated")
-        else:
-            frappe.throw(_(f"ZRA Error: {response.get('resultMsg', 'Unknown error')}"))
 
+        except requests.exceptions.Timeout:
+            throw(_("ZRA request timed out."))
+        except requests.exceptions.RequestException as e:
+            throw(_("ZRA request failed: {0}").format(e))

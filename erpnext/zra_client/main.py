@@ -240,6 +240,21 @@ class ZRAClient:
             return response
         return known_error_check(create_sale)
     
+    def update_item_zra_client(self, payload):
+        def call_update_item():
+            response = requests.post(self.update_url, json=payload, timeout=300)
+            response.raise_for_status()
+            return response
+        return known_error_check(call_update_item)
+    
+    def zra_client_update_import(self, payload):
+        def call_update_import_item():
+            response = requests.post(self.update_import_url, json=payload, timeout=300)
+            response.raise_for_status() 
+            return response
+        
+        return known_error_check(call_update_import_item)
+
     def update_stock_zra_client(self, payload):
         response = requests.post(self.save_stock_url, json=payload, timeout=70)
         response.raise_for_status() 
@@ -250,42 +265,7 @@ class ZRAClient:
         response.raise_for_status()
         return response.json()
 
-
-
-
-
-
- 
-    def zra_client_update_import(self, payload):
-        try:
-            response = requests.post(self.update_import_url, json=payload, timeout=300)
-            response.raise_for_status() 
-            result = response.json()
-            print(result)
-
-            if result.get("resultCd") == "000":
-                return response
-            elif result.get("resultCd") == "001":
-                frappe.throw("There is no search result")
-                
-            else:
-                frappe.throw(_("ZRA Error: {0}").format(result.get('resultMsg', 'Unknown error')))
-            return result
-
-        except requests.exceptions.Timeout:
-            frappe.throw(_("Request to ZRA timed out. Please try again later."))
-
-        except requests.exceptions.HTTPError as http_err:
-            frappe.throw(_("HTTP error occurred: {0}").format(str(http_err)))
-
-        except requests.exceptions.RequestException as req_err:
-            frappe.throw(_("An error occurred while connecting to ZRA: {0}").format(str(req_err)))
-
-        except ValueError:
-            frappe.throw(_("Invalid response received from ZRA (not JSON)."))
-    
    
-        
 
     def get_principals_zra_client(self, payload):
         try:
@@ -308,47 +288,7 @@ class ZRAClient:
             print("Request Exception:", e)
             raise Exception(f"Server Error\nException: Failed to save RVAT \nDetails: {str(e)}")
         
-    def update_item_zra_client(self, payload):
-        try:
-            response = requests.post(self.update_url, json=payload, timeout=400)
 
-            try:
-                data = response.json()
-                print(data)
-            except ValueError:
-                RequestException("UNKNOWN_RESPONSE").throw()
-
-            if response.status_code == 200:
-                result_cd = data.get("resultCd")
-                result_msg = data.get("resultMsg", ERRORS.get("UPDATE_ITEM_ERROR", "Update error"))
-
-                if result_cd == "000":
-                    frappe.msgprint("Item updated added successfully.")
-                    return data
-                
-                if result_cd == "999":
-                    frappe.throw("There is an unknown error. Please ask administrator")
-
-                
-                else:
-                    RequestException("UPDATE_ITEM_ERROR").throw()
-
-            elif response.status_code == 400:
-                error_message = data.get("error", ERRORS.get("UPDATE_ITEM_ERROR", "Update error"))
-                frappe.throw(f"Could not save the sale: {error_message}")
-
-            else:
-                RequestException("HTTP_ERROR").throw()
-        except requests.exceptions.Timeout:
-            RequestException("TIMEOUT").throw()
-        except requests.exceptions.ConnectionError:
-            RequestException("CONNECTION").throw()
-        except requests.exceptions.HTTPError:
-            RequestException("HTTP_ERROR").throw()
-        except requests.exceptions.RequestException:
-            RequestException("REQUEST_FAILED").throw()
-        except Exception:
-            RequestException("UNEXPECTED_ERROR").throw()
 
 
 

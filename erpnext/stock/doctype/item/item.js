@@ -1118,12 +1118,11 @@ function hideSpinner() {
 }
 
 // Hide the field
-frappe.ui.form.on("Item", {
-    onload(frm) {
-  
-        frm.set_df_property('item_code', 'hidden', 1);
-
-    
+frappe.ui.form.on('Item', {
+    before_save(frm) {
+        if (!frm.doc.item_code) {
+            frm.set_value('item_code', frappe.utils.random_string(8));
+        }
     }
 });
 

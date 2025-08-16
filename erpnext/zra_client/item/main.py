@@ -140,7 +140,8 @@ class zraItem(ZRAClient):
 
         print("Sending payload:", payload)
 
-        self.update_item_zra_client(payload)
+        response = self.update_item_zra_client(payload)
+        return response
 
         # self.update_item_in_background(self.update_url, payload)
 
