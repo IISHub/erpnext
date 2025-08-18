@@ -1321,3 +1321,36 @@ function showSpinner() {
 function hideSpinner() {
     $("#sale-spinner-modal").remove();
 }
+
+
+frappe.ui.form.on("Sales Invoice", {
+    refresh: function(frm) {
+        frm.trigger("toggle_custom_transaction_progress");
+        frm.trigger("toggle_custom_tax_type_in_items");
+    },
+
+    toggle_custom_transaction_progress: function(frm) {
+        frm.toggle_display(
+            "custom_transaction_progress",
+            frm.doc.is_return || frm.doc.is_debit_note
+        );
+    },
+
+    toggle_custom_tax_type_in_items: function(frm) {
+        if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
+            const fields_to_toggle = [
+                "custom_test", "custom_ipl", "custom_tl",
+                "custom_excise", "custom_tot", "item_code", "rate"
+            ];
+            const disable = frm.doc.is_return || frm.doc.is_debit_note;
+
+            fields_to_toggle.forEach(fieldname => {
+                frm.fields_dict["items"].grid.toggle_enable(fieldname, !disable);
+            });
+
+            frm.fields_dict["items"].grid.refresh();
+        } else {
+            console.warn("Items grid is not ready");
+        }
+    }
+});

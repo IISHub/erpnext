@@ -244,6 +244,7 @@ class NormaSale(ZRAClient):
         principal_id = sell_data.get("custom_principal_id")
         currency = sell_data.get("custom_sale_currency_")
         exchangeRt = sell_data.get("custom_rate")
+        is_stock_updated = sell_data.get("update_stock")
 
         if export_destination_country == "ASCENSION ISLAND":
             export_destination_country = " "
@@ -282,7 +283,7 @@ class NormaSale(ZRAClient):
             package_unit_code = formatted_items.get("custom_packaging_unit_code")
             unit_of_measure = formatted_items.get("custom_units_of_measure")
             item_class_name = formatted_items.get("custom_item_class_code")
-
+            product_type = formatted_items.get("custom_product_type"),
             if not item_class_name:
                 frappe.throw(f"Item classification code missing for item")
 
@@ -292,6 +293,18 @@ class NormaSale(ZRAClient):
             get_turn_over_tax = item.get("custom_tot")
             get_vat_name = item.get("custom_test")
             item_price = sell_data['items'][0]['rate']
+            itemName = item.get("item_name")
+
+            if isinstance(product_type, tuple):
+                product_type = product_type[0]
+            if product_type in ["Raw Material", "Finished Product"]:
+                if is_stock_updated != 1:
+                    frappe.throw(f"Update Stock must be checked for item {itemName} ({product_type})")
+
+            elif product_type == "Service":
+                if is_stock_updated == 1:
+                    frappe.throw(f"Update Stock must NOT be checked for item {itemName} ({product_type})")
+
 
             tlCat = {
                 "TL":"Tourism Levy",
@@ -326,9 +339,22 @@ class NormaSale(ZRAClient):
                 frappe.throw("Exactly one of vatCd, iplCd, or tlCd must be present. Found: {}".format(len(present_codes)))
 
             print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
-            itemName = item.get("item_name")
+            
 
             qty = item.get("qty")
+            actual_stock = item.get('actual_qty', 0)
+            remaining_stock = actual_stock - qty
+
+            if product_type in ["Raw Material", "Finished Product"]:
+                remaining_stock = actual_stock - qty
+                
+                if remaining_stock < 0:
+                    frappe.throw(
+                        f"Not enough stock for item {itemName}. Available: {actual_stock}, requested: {qty}"
+                    )
+
+            
+            print(f"Item: {itemName}, Qty Sold: {qty}, Remaining Stock: {remaining_stock}")
 
             items.append({
                 "itemCd": itemCd,
@@ -405,69 +431,69 @@ class NormaSale(ZRAClient):
             print("This prints immediately, before delayed print")
             ocrnDt = datetime.now().strftime("%Y%m%d")
             print(self.to_use_data)
+            if is_stock_updated == 1:
+                update_stock_items = []
+                update_stock_master_items = []
 
-            update_stock_items = []
-            update_stock_master_items = []
+                    
+                    
+                for item in self.to_use_data.get("itemList", []):
+                    update_stock_items.append({
+                        "itemSeq": item.get("itemSeq"),
+                        "itemCd": item.get("itemCd"),
+                        "itemClsCd": item.get("itemClsCd"),
+                        "itemNm": item.get("itemNm"),
+                        "pkgUnitCd": item.get("pkgUnitCd"),
+                        "qtyUnitCd": item.get("qtyUnitCd"),
+                        "qty": item.get("qty"),
+                        "prc": item.get("prc"),
+                        "splyAmt": item.get("splyAmt"),
+                        "taxblAmt": item.get("vatTaxblAmt"), 
+                        "vatCatCd": item.get("vatCatCd"),
+                        "taxAmt": item.get("vatAmt"),
+                        "totAmt": item.get("totAmt"),
+                        "pkg": item.get("pkg", 1),
+                        "totDcAmt": item.get("dcAmt", 0),
+                    })
 
-                
-                
-            for item in self.to_use_data.get("itemList", []):
-                update_stock_items.append({
-                    "itemSeq": item.get("itemSeq"),
-                    "itemCd": item.get("itemCd"),
-                    "itemClsCd": item.get("itemClsCd"),
-                    "itemNm": item.get("itemNm"),
-                    "pkgUnitCd": item.get("pkgUnitCd"),
-                    "qtyUnitCd": item.get("qtyUnitCd"),
-                    "qty": item.get("qty"),
-                    "prc": item.get("prc"),
-                    "splyAmt": item.get("splyAmt"),
-                    "taxblAmt": item.get("vatTaxblAmt"), 
-                    "vatCatCd": item.get("vatCatCd"),
-                    "taxAmt": item.get("vatAmt"),
-                    "totAmt": item.get("totAmt"),
-                    "pkg": item.get("pkg", 1),
-                    "totDcAmt": item.get("dcAmt", 0),
-                })
-
-                remaining_qty = 12  
-                update_stock_master_items.append({
-                    "itemCd": item.get("itemCd"),
-                    "rsdQty": max(0, remaining_qty)
-                })
+        
+                    update_stock_master_items.append({
+                        "itemCd": item.get("itemCd"),
+                        "rsdQty": remaining_stock 
+                    })
 
 
-            update_stock_payload = {
-                "tpin": self.tpin,
-                "bhfId": self.branch_code,
-                "sarNo": 1,
-                "orgSarNo": 0,
-                "regTyCd": "M",
-                "sarTyCd": "11",
-                "ocrnDt": ocrnDt,
-                "totItemCnt": self.to_use_data['totItemCnt'],
-                "totTaxblAmt": self.to_use_data['totTaxblAmt'],
-                "totTaxAmt": self.to_use_data['totTaxAmt'],
-                "totAmt": self.to_use_data['totAmt'],
-                "regrId": created_by,
-                "regrNm": created_by,
-                "modrNm": created_by,
-                "modrId": created_by,
-                "itemList": update_stock_items
-            }
-
-            update_stock_master_payload = {
-                "tpin": self.tpin,
-                "bhfId": self.get_branch_code(),
-                "regrId": created_by,
-                "regrNm": created_by,
-                "modrNm": created_by,
-                "modrId": created_by,
-                "stockItemList": update_stock_master_items 
+                update_stock_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.branch_code,
+                    "sarNo": 1,
+                    "orgSarNo": 0,
+                    "regTyCd": "M",
+                    "sarTyCd": "11",
+                    "ocrnDt": ocrnDt,
+                    "totItemCnt": self.to_use_data['totItemCnt'],
+                    "totTaxblAmt": self.to_use_data['totTaxblAmt'],
+                    "totTaxAmt": self.to_use_data['totTaxAmt'],
+                    "totAmt": self.to_use_data['totAmt'],
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "itemList": update_stock_items
                 }
 
-            print(update_stock_payload, update_stock_master_items)
-            self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
+                update_stock_master_payload = {
+                    "tpin": self.tpin,
+                    "bhfId": self.get_branch_code(),
+                    "regrId": created_by,
+                    "regrNm": created_by,
+                    "modrNm": created_by,
+                    "modrId": created_by,
+                    "stockItemList": update_stock_master_items 
+                    }
+
+                print(update_stock_payload, update_stock_master_items)
+                self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
 
 
 
@@ -704,6 +730,7 @@ class CreditNote(ZRAClient):
             currency = sell_data.get("custom_sale_currency_")
             exchangeRt = sell_data.get("custom_rate")
             
+            
 
             if export_destination_country == "ASCENSION ISLAND":
                 export_destination_country = " "
@@ -747,10 +774,9 @@ class CreditNote(ZRAClient):
                 get_turn_over_tax = item.get("custom_tot")
                 get_vat_name = item.get("custom_test")
                 item_price = sell_data['items'][0]['rate']
-
+                itemName = item.get("item_name")
                 
-           
-        
+
                 tlCat = {
                 "TL":"Tourism Levy",
                 "F": "Service Charge 10%"
@@ -783,7 +809,7 @@ class CreditNote(ZRAClient):
 
 
                 print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
-                itemName = item.get("item_name")
+                
 
                 
             
