@@ -208,7 +208,16 @@ class ZRAClient:
         thread.daemon = True  
         thread.start()
     
-    
+    def get_current_item_stock_qty(self, item_code, warehouse):
+        result = frappe.db.sql("""
+            SELECT SUM(actual_qty)
+            FROM `tabStock Ledger Entry`
+            WHERE item_code = %s
+            AND warehouse = %s
+            AND is_cancelled = 0
+        """, (item_code, warehouse))
+
+        return result[0][0] or 0
 
     def create_item_zra(self, payload):
         def call_create_item():    

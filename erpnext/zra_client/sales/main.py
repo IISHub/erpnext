@@ -1,4 +1,4 @@
-from erpnext.zra_client.main import ZRAClient
+from erpnext.zra_client.main import RequestException, ZRAClient
 import os
 import frappe
 import json
@@ -305,6 +305,8 @@ class NormaSale(ZRAClient):
                 if is_stock_updated == 1:
                     frappe.throw(f"Update Stock must NOT be checked for item {itemName} ({product_type})")
 
+            print(f"Processing item: {itemName} ({itemCd}) - Product Type: {product_type} Is stock upadted {is_stock_updated}")
+
 
             tlCat = {
                 "TL":"Tourism Levy",
@@ -413,12 +415,11 @@ class NormaSale(ZRAClient):
 
 
 
-
-
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
         response = response.json()
+        print(f"Response from ZRA: {response}")
         
         if response.get("resultCd") == "000":
             get_rcpt_no = response.get("data", {}).get("rcptNo")
@@ -432,6 +433,7 @@ class NormaSale(ZRAClient):
             ocrnDt = datetime.now().strftime("%Y%m%d")
             print(self.to_use_data)
             if is_stock_updated == 1:
+                print("Updating stock items...")
                 update_stock_items = []
                 update_stock_master_items = []
 
@@ -494,6 +496,10 @@ class NormaSale(ZRAClient):
 
                 print(update_stock_payload, update_stock_master_items)
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
+        else:
+            result_cd = response.get("resultCd")
+            RequestException(result_cd or "SALE_ERROR").throw()
+
 
 
 
@@ -681,10 +687,10 @@ class CreditNote(ZRAClient):
                 "totAmt": total_amount,
                 "prchrAcptcYn": "N",
                 "remark": "",
-                "regrId": "admin",
-                "regrNm": "admin",
-                "modrId": "admin",
-                "modrNm": "admin",
+                "regrId": base_data["created_by"],
+                "regrNm": base_data["created_by"],
+                "modrId": base_data["created_by"],
+                "modrNm": base_data["created_by"],
                 "saleCtyCd": "1",
                 "lpoNumber": None,
                 "currencyTyCd": base_data["currencyCd"],
@@ -729,7 +735,10 @@ class CreditNote(ZRAClient):
             is_export = sell_data.get("custom_export")
             currency = sell_data.get("custom_sale_currency_")
             exchangeRt = sell_data.get("custom_rate")
-            
+            created_by = sell_data.get("modified_by")
+            is_stock_update = sell_data.get("update_stock")
+
+
             
 
             if export_destination_country == "ASCENSION ISLAND":
@@ -775,7 +784,7 @@ class CreditNote(ZRAClient):
                 get_vat_name = item.get("custom_test")
                 item_price = sell_data['items'][0]['rate']
                 itemName = item.get("item_name")
-                
+                warehouses = item.get("warehouse") 
 
                 tlCat = {
                 "TL":"Tourism Levy",
@@ -807,13 +816,12 @@ class CreditNote(ZRAClient):
                 if len(present_codes) != 1:
                     frappe.throw("Exactly one of vatCd, iplCd, or tlCd must be present. Found: {}".format(len(present_codes)))
 
-
-                print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
                 
-
-                
-            
                 qty = abs((item.get("qty", 0)))
+                current_qty = self.get_current_item_stock_qty(itemCd, warehouses)
+                now_available_qty =  current_qty + qty
+
+                print(f"available Qty for {itemCd} in {warehouses}: {current_qty }, Now available Qty: {now_available_qty}")
 
                 items.append({
                     "itemCd": itemCd,
@@ -835,6 +843,7 @@ class CreditNote(ZRAClient):
                 "original_sell": original_sell,
                 "currencyCd": currencyCd,
                 "exchangeRt": exchangeRt,
+                "created_by": created_by
             }
             if is_export == 1 or vatCd == "C1":
                 self.validate_export(vatCd, export_destination_country, is_export)
@@ -880,71 +889,74 @@ class CreditNote(ZRAClient):
                 ocrnDt = datetime.now().strftime("%Y%m%d")
                 print(self.to_use_data)
 
-                update_stock_items = []
-                update_stock_master_items = []
+                if is_stock_update == 1:
+                    print("Updating stock items...")
+                    update_stock_items = []
+                    update_stock_master_items = []
 
-                    
-                    
-                for item in self.to_use_data.get("itemList", []):
-                    update_stock_items.append({
-                        "itemSeq": item.get("itemSeq"),
-                        "itemCd": item.get("itemCd"),
-                        "itemClsCd": item.get("itemClsCd"),
-                        "itemNm": item.get("itemNm"),
-                        "pkgUnitCd": item.get("pkgUnitCd"),
-                        "qtyUnitCd": item.get("qtyUnitCd"),
-                        "qty": item.get("qty"),
-                        "prc": item.get("prc"),
-                        "splyAmt": item.get("splyAmt"),
-                        "taxblAmt": item.get("vatTaxblAmt"), 
-                        "vatCatCd": item.get("vatCatCd"),
-                        "taxAmt": item.get("vatAmt"),
-                        "totAmt": item.get("totAmt"),
-                        "pkg": item.get("pkg", 1),
-                        "totDcAmt": item.get("dcAmt", 0),
-                    })
+                        
+                        
+                    for item in self.to_use_data.get("itemList", []):
+                        update_stock_items.append({
+                            "itemSeq": item.get("itemSeq"),
+                            "itemCd": item.get("itemCd"),
+                            "itemClsCd": item.get("itemClsCd"),
+                            "itemNm": item.get("itemNm"),
+                            "pkgUnitCd": item.get("pkgUnitCd"),
+                            "qtyUnitCd": item.get("qtyUnitCd"),
+                            "qty": item.get("qty"),
+                            "prc": item.get("prc"),
+                            "splyAmt": item.get("splyAmt"),
+                            "taxblAmt": item.get("vatTaxblAmt"), 
+                            "vatCatCd": item.get("vatCatCd"),
+                            "taxAmt": item.get("vatAmt"),
+                            "totAmt": item.get("totAmt"),
+                            "pkg": item.get("pkg", 1),
+                            "totDcAmt": item.get("dcAmt", 0),
+                        })
 
-                    remaining_qty = 12  
-                    update_stock_master_items.append({
-                        "itemCd": item.get("itemCd"),
-                        "rsdQty": max(0, remaining_qty)
-                    })
+                        update_stock_master_items.append({
+                            "itemCd": item.get("itemCd"),
+                            "rsdQty": now_available_qty
+                        })
 
 
-                update_stock_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.branch_code,
-                    "sarNo": 1,
-                    "orgSarNo": 0,
-                    "regTyCd": "M",
-                    "sarTyCd": "03",
-                    "ocrnDt": ocrnDt,
-                    "totItemCnt": self.to_use_data['totItemCnt'],
-                    "totTaxblAmt": self.to_use_data['totTaxblAmt'],
-                    "totTaxAmt": self.to_use_data['totTaxAmt'],
-                    "totAmt": self.to_use_data['totAmt'],
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "itemList": update_stock_items
-                }
-
-                update_stock_master_payload = {
-                    "tpin": self.tpin,
-                    "bhfId": self.get_branch_code(),
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
-                    "stockItemList": update_stock_master_items 
+                    update_stock_payload = {
+                        "tpin": self.tpin,
+                        "bhfId": self.branch_code,
+                        "sarNo": 1,
+                        "orgSarNo": 0,
+                        "regTyCd": "M",
+                        "sarTyCd": "03",
+                        "ocrnDt": ocrnDt,
+                        "totItemCnt": self.to_use_data['totItemCnt'],
+                        "totTaxblAmt": self.to_use_data['totTaxblAmt'],
+                        "totTaxAmt": self.to_use_data['totTaxAmt'],
+                        "totAmt": self.to_use_data['totAmt'],
+                        "regrId": created_by,
+                        "regrNm": created_by,
+                        "modrNm": created_by,
+                        "modrId": created_by,
+                        "itemList": update_stock_items
                     }
-                
+
+                    update_stock_master_payload = {
+                        "tpin": self.tpin,
+                        "bhfId": self.get_branch_code(),
+                        "regrId": created_by,
+                        "regrNm": created_by,
+                        "modrNm": created_by,
+                        "modrId": created_by,
+                        "stockItemList": update_stock_master_items 
+                        }
+                    
 
 
-                print(update_stock_payload, update_stock_master_items)
-                self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
-
+                    print(update_stock_payload, update_stock_master_items)
+                    self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
+            else:
+                result_cd = response.get("resultCd")
+                RequestException(result_cd or "SALE_ERROR").throw()
 
 
 
