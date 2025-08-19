@@ -49,10 +49,10 @@ from erpnext.controllers.selling_controller import SellingController
 from erpnext.projects.doctype.timesheet.timesheet import get_projectwise_timesheet_data
 from erpnext.setup.doctype.company.company import update_company_current_month_sales
 from erpnext.stock.doctype.delivery_note.delivery_note import update_billed_amount_based_on_so
-
+import random
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
-
+from frappe.utils import now_datetime
 
 class PartialPaymentValidationError(frappe.ValidationError):
 	pass
@@ -263,6 +263,10 @@ class SalesInvoice(SellingController):
 			}
 		]
 
+	def autoname(self):
+		random_number = random.randint(1000, 9999)
+		self.name = f"SALE-INVOICE{now_datetime().strftime('%Y%m%d%H%M%S')}-{random_number}"
+
 	def set_indicator(self):
 		"""Set indicator for portal"""
 		if self.outstanding_amount < 0:
@@ -449,9 +453,6 @@ class SalesInvoice(SellingController):
 
 	def on_submit(self):
 		sell_order = self.as_dict()
-		# sale_obj = NormaSale()
-		# sale_obj.send_sale_data(sell_order)
-
 		is_return = sell_order.get("is_return")
 		is_debit_note = sell_order.get("is_debit_note")
 		is_export = sell_order.get("custom_export")
