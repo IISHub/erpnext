@@ -194,10 +194,10 @@ class NormaSale(ZRAClient):
             "totAmt": total_amount,
             "prchrAcptcYn": "N",
             "remark": "",
-            "regrId": "admin",
-            "regrNm": "admin",
-            "modrId": "admin",
-            "modrNm": "admin",
+            "regrId": base_data["created_by"],
+            "regrNm": base_data["created_by"],
+            "modrId": base_data["created_by"],
+            "modrNm": base_data["created_by"],
             "saleCtyCd": "1",
             "currencyTyCd": base_data["currencyCd"],
             "exchangeRt": base_data["exchangeRt"],
@@ -245,6 +245,7 @@ class NormaSale(ZRAClient):
         currency = sell_data.get("custom_sale_currency_")
         exchangeRt = sell_data.get("custom_rate")
         is_stock_updated = sell_data.get("update_stock")
+        created_by = sell_data.get("modified_by")
 
         if export_destination_country == "ASCENSION ISLAND":
             export_destination_country = " "
@@ -377,7 +378,8 @@ class NormaSale(ZRAClient):
             "cust_tpin": customer_tpin,
             "name": name,
             "currencyCd": currencyCd,
-            "exchangeRt": exchangeRt
+            "exchangeRt": exchangeRt,
+            "created_by": created_by,
 
             
         }
@@ -1148,10 +1150,10 @@ class DebitNote(ZRAClient):
                     "totAmt": total_amount,
                     "prchrAcptcYn": "N",
                     "remark": "",
-                    "regrId": "admin",
-                    "regrNm": "admin",
-                    "modrId": "admin",
-                    "modrNm": "admin",
+                    "regrId": base_data["created_by"],
+                    "regrNm": base_data["created_by"],
+                    "modrId": base_data["created_by"],
+                    "modrNm": base_data["created_by"],
                     "saleCtyCd": "1",
                     "lpoNumber": None,
                     "currencyTyCd": base_data["currencyCd"],
@@ -1194,6 +1196,8 @@ class DebitNote(ZRAClient):
                 is_export = sell_data.get("custom_export")
                 currency = sell_data.get("custom_sale_currency_")
                 exchangeRt = sell_data.get("custom_rate")
+                is_stock_updated = sell_data.get("update_stock")
+                created_by = sell_data.get("modified_by")
                 if export_destination_country == "ASCENSION ISLAND":
                     export_destination_country = " "
 
@@ -1229,14 +1233,26 @@ class DebitNote(ZRAClient):
                     package_unit_code = formatted_items.get("custom_packaging_unit_code")
                     unit_of_measure = formatted_items.get("custom_units_of_measure")
                     item_class_name = formatted_items.get("custom_item_class_code")
+                    product_type = formatted_items.get("custom_product_type"),
                     get_ipl_name = item.get("custom_ipl")
                     get_tl_name = item.get("custom_tl")
                     get_excise_name = item.get("custom_excise")
                     get_turn_over_tax = item.get("custom_tot")
                     get_vat_name = item.get("custom_test")
                     item_price = sell_data['items'][0]['rate']
-                    
 
+
+
+                    if isinstance(product_type, tuple):
+                        product_type = product_type[0]
+                    if product_type in ["Raw Material", "Finished Product"]:
+                        if is_stock_updated != 1:
+                            frappe.throw(f"Update Stock must be checked for item {itemName} ({product_type})")
+
+                    elif product_type == "Service":
+                        if is_stock_updated == 1:
+                            frappe.throw(f"Update Stock must NOT be checked for item {itemName} ({product_type})")
+                            
             
                     tlCat = {
                     "TL":"Tourism Levy",
@@ -1272,10 +1288,13 @@ class DebitNote(ZRAClient):
 
                     print(package_unit_code, unit_of_measure, get_vat_name, vatCd)
                     itemName = item.get("item_name")
-
+                    
                     
                 
                     qty = abs((item.get("qty", 0)))
+                    actual_stock = item.get('actual_qty', 0)
+                    remaining_stock = actual_stock - qty
+
 
                     items.append({
                         "itemCd": itemCd,
@@ -1297,6 +1316,7 @@ class DebitNote(ZRAClient):
                     "original_sell": original_sell,
                     "currencyCd": currencyCd,
                     "exchangeRt": exchangeRt,
+                    "created_by": created_by
                 }
 
                 if is_export == 1 or vatCd == "C1":
@@ -1367,10 +1387,10 @@ class DebitNote(ZRAClient):
                             "totDcAmt": item.get("dcAmt", 0),
                         })
 
-                        remaining_qty = 12  
+                
                         update_stock_master_items.append({
                             "itemCd": item.get("itemCd"),
-                            "rsdQty": max(0, remaining_qty)
+                            "rsdQty": remaining_stock 
                         })
 
 
@@ -1404,6 +1424,9 @@ class DebitNote(ZRAClient):
 
                     print(update_stock_payload, update_stock_master_items)
                     self.run_stock_update_in_background(update_stock_payload,  update_stock_master_payload, created_by)
+                else:
+                    result_cd = response.get("resultCd")
+                    RequestException(result_cd or "SALE_ERROR").throw()
    
 
 
