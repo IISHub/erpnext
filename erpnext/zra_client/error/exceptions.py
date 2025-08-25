@@ -2,6 +2,14 @@ import requests
 import frappe
 
 # Centralized error messages
+
+
+
+RETRYABLE_ERRORS = [
+    "TIMEOUT", "CONNECTION", "REQUEST_FAILED", "UNKNOWN_RESPONSE",
+    "HTTP_ERROR", "UNEXPECTED_ERROR", "838", "894", "801", "802"
+]
+
 ERRORS = {
     # General errors
     "TIMEOUT": "The request took too long to process. Please try again later.",
@@ -16,6 +24,8 @@ ERRORS = {
     "UNEXPECTED_ERROR": "An unexpected error occurred. Please try again or contact support.",
     "UPDATE_ITEM_ERROR": "There was a problem with your update item submission. Please try again.",
     "CREATE_ITEM_ERROR": "There was a problem with your create item submission. Please try again.",
+    "MAX_RETRIES_EXCEEDED": "The request failed after multiple attempts. Please try again later.",
+    "UNKNOWN_TASK_TYPE": "The requested task type is not recognized. Please contact support or check your request.",
 
     "000001": "It is succeeded. There is no search result.",
     "801": "There is no data to retransmit.",

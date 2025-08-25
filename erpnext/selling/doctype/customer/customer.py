@@ -4,7 +4,9 @@
 
 import json
 
-from erpnext.zra_client.error.exceptions import RequestException
+from erpnext.zra_client.retry.main import ResponseRetry
+from erpnext.zra_client.error.exceptions import RequestException, RETRYABLE_ERRORS
+from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.main import ZRAClient
 import frappe
 import frappe.defaults
@@ -195,17 +197,22 @@ class Customer(TransactionBase):
             "modrNm": created_by,
             "modrId": created_by
         }
-		print(payload)
-		result = zra_client.create_customer(payload)
+		# result = zra_client.create_customer(payload)
+		# print(result)
 		try:
-			data = result.json()
-			print(data)
-
+			data = mock_zra_response()
+			# data = result.json()
+			
 			if data.get("resultCd") == "000":
 				frappe.msgprint("Customer has been saved successfully.")
 				return data
 			else:
-				RequestException("CREATE_ITEM_ERROR").throw()
+				result_cd = data.get("resultCd")
+				if result_cd in RETRYABLE_ERRORS:
+					response = ResponseRetry(payload, task_type=1).determine_task_type()
+
+				else:		
+					RequestException(result_cd or "CREATE_CUSTOMER_ERROR").throw()
 
 		except ValueError:
 			RequestException("UNKNOWN_RESPONSE").throw()
