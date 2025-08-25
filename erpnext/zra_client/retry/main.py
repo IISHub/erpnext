@@ -1,17 +1,22 @@
 import time
 import random
 import frappe
+from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.error.exceptions import RequestException, RETRYABLE_ERRORS
 
 
-class ResponseRetry:
+class ResponseRetry(ZRAClient):
     def __init__(self, payload=None, task_type=None, max_attempts=3):
         self.payload = payload
         self.task_type = task_type
         self.max_attempts = max_attempts
 
+
+
     def create_customer(self):
+        create_customer_payload = self.payload
+        customer_tpin = create_customer_payload["custTpin"]
         attempt = 0
         while attempt < self.max_attempts:
             attempt += 1
@@ -19,7 +24,9 @@ class ResponseRetry:
             print(f"Attempt {attempt}: {data}")
 
             if data.get("resultCd") == "000":
+                
                 frappe.msgprint("Customer has been saved successfully.")
+                self.update_customer_status_by_tpin(customer_tpin, 1)
                 return data
             elif data.get("resultCd") in RETRYABLE_ERRORS:
                 print(f"Retryable error: {data.get('resultMsg')}, retrying in 2s...")
@@ -27,7 +34,8 @@ class ResponseRetry:
             else:
                 RequestException(data.get("resultCd") or "CREATE_CUSTOMER_ERROR").throw()
         
-        frappe.msgprint("Customer saved with status 'Pending'. Will retry sending when network is back.")
+        self.update_customer_status_by_tpin(customer_tpin, 0)
+        RequestException("MAX_RETRIES_EXCEEDED").throw()
 
     def determine_task_type(self):
         if self.task_type == 1:

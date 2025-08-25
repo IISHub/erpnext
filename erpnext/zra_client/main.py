@@ -54,6 +54,48 @@ class ZRAClient:
         return self.branch_code
     
 
+
+
+    def update_customer_status_by_tpin(self, tpin, status, delay=10):
+        def worker():
+            # Start a new Frappe request context
+            frappe.local = frappe._dict()
+            frappe.local.site = frappe.local.site or frappe.local.request_site
+            frappe.connect()  # bind database connection
+
+            try:
+                if status == 0:
+                    actual_status = "Pending"
+                elif status == 1:
+                    actual_status = "Approved"
+                else:
+                    actual_status = "Failed"
+
+                print(f"Waiting {delay} seconds before updating TPIN '{tpin}'...")
+                time.sleep(delay)
+
+                customer_list = frappe.get_all("Customer", filters={"custom_tpin": tpin}, limit=1)
+                if not customer_list:
+                    print(f"No customer found with TPIN '{tpin}'.")
+                    return
+
+                customer_doc = frappe.get_doc("Customer", customer_list[0].name)
+                customer_doc.custom_submission_status = actual_status
+                customer_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Customer with TPIN '{tpin}' status updated to '{actual_status}'.")
+
+            except Exception as e:
+                print(f"Error updating customer TPIN '{tpin}': {e}")
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+    
+
     def validate_export(self, vatCd, export_destination_country, is_export):
         if vatCd == "C1":
             if not is_export:
