@@ -154,6 +154,9 @@ class Customer(TransactionBase):
 		customer_data = self.as_dict()
 		print(customer_data)
 		frappe.logger().info("Creating customer with data: {}".format(customer_data))
+		if getattr(self.flags, "in_import", False) or getattr(frappe.flags, "in_import", False):
+			frappe.logger().info("Skipping before_insert (Data Import mode).")
+			return
 
 		tpin = customer_data.get("custom_tpin")
 		customer_name = self.get("customer_name") or ""
