@@ -52,17 +52,52 @@ class ZRAClient:
 
     def get_branch_code(self):
         return self.branch_code
-    
 
 
-
-    def update_customer_status_by_tpin(self, tpin, status, delay=10):
+    def update_customer_status_by_tpin(self, tpin, status, delay, site):
         def worker():
-            # Start a new Frappe request context
-            frappe.local = frappe._dict()
-            frappe.local.site = frappe.local.site or frappe.local.request_site
-            frappe.connect()  # bind database connection
+            try:
+                frappe.init(site)
+                frappe.connect()
+                frappe.set_user("Administrator")  
 
+                status_map = {0: "Pending", 1: "Approved"}
+                actual_status = status_map.get(status, "Failed")
+
+                print(f"Waiting {delay} seconds before updating TPIN '{tpin}' on site '{site}'...")
+                time.sleep(delay)
+
+                customer_list = frappe.get_all("Customer", filters={"custom_tpin": tpin}, limit=1)
+                if not customer_list:
+                    print(f"No customer found with TPIN '{tpin}' on site '{site}'.")
+                    return
+
+                customer_doc = frappe.get_doc("Customer", customer_list[0].name)
+                customer_doc.custom_submission_status = actual_status
+                customer_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Customer with TPIN '{tpin}' status updated to '{actual_status}' on site '{site}'.")
+
+            except Exception as e:
+                print(f"Error updating customer TPIN '{tpin}' on site '{site}': {e}")
+
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+
+
+    def update_item_status_by_item_code(self, item_code, status, delay, site):
+        def worker():
+            site_to_use = site or frappe.local.site
+            
+            frappe.init(site=site_to_use)
+            frappe.connect()
+            frappe.set_user("Administrator")
+            
             try:
                 if status == 0:
                     actual_status = "Pending"
@@ -71,28 +106,28 @@ class ZRAClient:
                 else:
                     actual_status = "Failed"
 
-                print(f"Waiting {delay} seconds before updating TPIN '{tpin}'...")
+                print(f"Waiting {delay} seconds before updating item '{item_code}'...")
                 time.sleep(delay)
 
-                customer_list = frappe.get_all("Customer", filters={"custom_tpin": tpin}, limit=1)
-                if not customer_list:
-                    print(f"No customer found with TPIN '{tpin}'.")
+                item_list = frappe.get_all("Item", filters={"item_code": item_code}, limit=1)
+                if not item_list:
+                    print(f"No item found with code '{item_code}'.")
                     return
 
-                customer_doc = frappe.get_doc("Customer", customer_list[0].name)
-                customer_doc.custom_submission_status = actual_status
-                customer_doc.save(ignore_permissions=True)
+                item_doc = frappe.get_doc("Item", item_list[0].name)
+                item_doc.custom__submission_status = actual_status
+                item_doc.save(ignore_permissions=True)
                 frappe.db.commit()
 
-                print(f"Customer with TPIN '{tpin}' status updated to '{actual_status}'.")
-
+                print(f"Item '{item_code}' status updated to '{actual_status}'.")
+            
             except Exception as e:
-                print(f"Error updating customer TPIN '{tpin}': {e}")
+                print(f"Error updating item '{item_code}': {e}")
+            
             finally:
                 frappe.destroy()
-
+    
         threading.Thread(target=worker, daemon=True).start()
-
 
     
 

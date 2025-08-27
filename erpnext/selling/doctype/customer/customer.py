@@ -3,7 +3,7 @@
 
 
 import json
-
+from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.error.exceptions import RequestException, RETRYABLE_ERRORS
 from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.main import ZRAClient
@@ -30,6 +30,8 @@ from urllib.parse import urljoin
 import requests
 from urllib.parse import urljoin
 
+
+zra_instance = ZRAClient()
 
 
 
@@ -205,6 +207,10 @@ class Customer(TransactionBase):
 			data = result.json()
 			if data.get("resultCd") == "000":
 				frappe.msgprint("Customer has been saved successfully.")
+				site = "erpnext.localhost"
+				customerTpin = payload["custTpin"]
+				zra_instance.update_customer_status_by_tpin(customerTpin, 1, 10, site)
+
 				return data
 			else:
 				result_cd = data.get("resultCd")

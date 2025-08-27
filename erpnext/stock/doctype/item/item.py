@@ -5,9 +5,11 @@ import copy
 import json
 import random
 import requests
-from erpnext.zra_client.error.exceptions import RequestException
+from erpnext.zra_client.retry.main import ResponseRetry
+from erpnext.zra_client.error.exceptions import RETRYABLE_ERRORS, RequestException
 from erpnext.zra_client.imports.main import Imports
 from erpnext.zra_client.item.main import zraItem
+from erpnext.zra_client.main import ZRAClient
 import frappe
 from urllib.parse import quote
 from frappe import _, bold
@@ -67,6 +69,7 @@ class DataValidationError(frappe.ValidationError):
 	pass
 
 
+zra_instance = ZRAClient()
 class Item(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
@@ -189,189 +192,193 @@ class Item(Document):
 		self.item_code = strip(self.item_code)
 		self.name = self.item_code
 
-from config.config import DatabaseConnection
-from zra_client.main import ZRAClient
-from celery import shared_task
-import mysql.connector
-import logging
-import json
-import random
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+	def before_insert(self):
+		item_data = self.as_dict()
+		zra_obj = ZRAClient()
+		print("Incoming item_data:", json.dumps(item_data, indent=2))
 
+		get_item_class_code = item_data.get("custom_item_class_code", "").strip()
+		if not get_item_class_code:
+			frappe.throw("Missing ZRA Item Classification Code.")
 
-class Item(DatabaseConnection, ZRAClient):
-    def __init__(self):
-        DatabaseConnection.__init__(self)
-        ZRAClient.__init__(self)
+		product_type = item_data.get("custom_product_type", "").strip()
+		itemTyCd = None
+		if product_type == "Raw Material":
+			itemTyCd = "1"
+		elif product_type == "Finished Product":
+			itemTyCd = "2"
+		elif product_type == "Service":
+			itemTyCd = "3"
+		if not itemTyCd:
+			frappe.throw("Missing or invalid ZRA Item Type Code. Must be 'Raw Material', 'Finished Product', or 'Service'.")
 
-    def update_status_for_item(self, item_code, new_status):
-        try:
-            logger.info(f"Updating status for item {item_code} -> {new_status}")
-            sql = "UPDATE tabItem SET custom_submission_status = %s WHERE item_code = %s"
-            self.cursor.execute(sql, (new_status, item_code))
-            self.conn.commit()
-            logger.info(f"Status updated for item {item_code} -> {new_status}")
-        except mysql.connector.Error as e:
-            logger.error(f"MySQL error while updating item status: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+		unit_name = item_data.get("custom_units_of_measure", "").strip()
+		if not unit_name:
+			frappe.throw("Missing ZRA Quantity Unit Code.")
 
-    def get_items(self):
-        try:
-            cursor = self.conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM tabItem")
-            rows = cursor.fetchall()
-            cursor.close()
-            return rows
-        except mysql.connector.Error as e:
-            logger.error(f"Error getting item {e}")
-            return []
+		country_name = item_data.get("custom_origin_place_code", "").strip()
+		if not country_name:
+			frappe.throw("Missing ZRA Country of Origin Code.")
 
-    def prepare_payload(self, item_data):
-        zra_obj = ZRAClient()
+		packaging_unit = item_data.get("custom_packaging_unit_code", "").strip()
+		if not packaging_unit:
+			frappe.throw("Missing ZRA Packaging Unit Code.")
 
-        # Required fields with validation
-        item_name = item_data.get("item_name", "").strip()
-        item_class = item_data.get("custom_item_class_code", "").strip()
-        product_type = item_data.get("custom_product_type", "").strip()
-        origin_name = item_data.get("custom_origin_place_code", "").strip()
-        packaging_unit = item_data.get("custom_packaging_unit_code", "").strip()
-        qty_unit_name = item_data.get("custom_units_of_measure", "").strip()
+		country_code = zra_obj.get_country_code_by_name(country_name)
+		packaging_unit_code = zra_obj.get_packaging_unit(packaging_unit)
+		qtyUnitCd = zra_obj.get_units_of_measure(unit_name)
 
-        if not item_class:
-            raise ValueError(f"Missing Item Classification Code for {item_name}")
-        if not product_type:
-            raise ValueError(f"Missing Product Type for {item_name}")
-        if not origin_name:
-            raise ValueError(f"Missing Country of Origin for {item_name}")
-        if not packaging_unit:
-            raise ValueError(f"Missing Packaging Unit for {item_name}")
-        if not qty_unit_name:
-            raise ValueError(f"Missing Quantity Unit for {item_name}")
+		vat_raw = item_data.get("custom_vat", "").replace(" ", "").strip()
+		vat_map = {
+			"StandardRated": "A", 
+			"MinimumTaxableValue": "B", 
+			"Exports": "C1",
+			"ZeroRatingLocalPurchases": "C2", 
+			"ZeroRatedByNature": "C3",
+			"Exempt": "D", 
+			"Disbursement": "E", 
+			"ServiceCharge10%": "F", 
+			"ReverseVAT": "RVAT"
+		}
+		vatCatCd = vat_map.get(vat_raw, "A")
 
-        # Mappings
-        product_type_map = {"Raw Material": "1", "Finished Product": "2", "Service": "3"}
-        itemTyCd = product_type_map.get(product_type, "3")
+		excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
+		exciseTxCatCd = ""
+		if excise_name == "Excise on Coal":
+			exciseTxCatCd = "ECM"
+		elif excise_name == "Excise Electricity":
+			exciseTxCatCd = "EXEEG"
 
-        vat_map = {
-            "StandardRated": "A",
-            "MinimumTaxableValue": "B",
-            "Exports": "C1",
-            "ZeroRatingLocalPurchases": "C2",
-            "ZeroRatedByNature": "C3",
-            "Exempt": "D",
-            "Disbursement": "E",
-            "ServiceCharge10%": "F",
-            "ReverseVAT": "RVAT"
-        }
-        vat_raw = item_data.get("custom_vat", "").replace(" ", "").strip()
-        vatCatCd = vat_map.get(vat_raw, "A")
+		ipl_name = item_data.get("custom_ipl_category_code", "").strip()
+		iplCatCd = None
+		if ipl_name == "Insurance Premium Levy":
+			iplCatCd = "IPL1"
+		elif ipl_name == "Re-Insurance":
+			iplCatCd = "IPL2"
 
-        excise_name = item_data.get("custom_excise_tax_category_code", "").strip()
-        excise_map = {"Excise on Coal": "ECM", "Excise Electricity": "EXEEG"}
-        exciseTxCatCd = excise_map.get(excise_name, "")
+		tl_name = item_data.get("custom_tourism_levy_category_code", "").strip()
+		tlCatCd = "TL" if tl_name == "Tourism Levy" else None
 
-        ipl_name = item_data.get("custom_ipl_category_code", "").strip()
-        ipl_map = {"Insurance Premium Levy": "IPL1", "Re-Insurance": "IPL2"}
-        iplCatCd = ipl_map.get(ipl_name, "")
+		manufacturer_tpin = item_data.get("custom_manufacturer_tpin", "").strip() or None
+		manufacturer_item_code = item_data.get("custom_manufacturer_item_code", "").strip() or None
 
-        tl_name = item_data.get("custom_tourism_levy_category_code", "").strip()
-        tlCatCd = "TL" if tl_name == "Tourism Levy" else ""
+		rrp = None
+		rrp_raw = item_data.get("custom_recommended_retail_price")
+		if rrp_raw is not None and str(rrp_raw).strip() != "":
+			try:
+				rrp = float(rrp_raw)
+			except ValueError:
+				frappe.log_error(f"Invalid RRP value for item {self.item_name}: {rrp_raw}", "ZRA Item Save Warning")
 
-        # Convert codes
-        country_code = zra_obj.get_country_code_by_name(origin_name)
-        packaging_unit_code = zra_obj.get_packaging_unit(packaging_unit)
-        qtyUnitCd = zra_obj.get_units_of_measure(qty_unit_name)
-        itemClsCd = zra_obj.get_classification_code(item_class)
+		svcChargeYn = "Y" if item_data.get("custom_has_service_charge") else "N"
+		rentalYn = "Y" if item_data.get("custom_has_rental_charge") else "N"
 
-        # Prices and stock
-        try:
-            default_price = float(item_data.get("standard_rate", 0.0))
-        except ValueError:
-            default_price = 0.0
+		add_info = item_data.get("custom_zra_additional_info", "").strip() or None
+		barcode = item_data.get("barcode", "").strip() or None
 
-        try:
-            opening_stock = float(item_data.get("opening_stock", 0.0))
-        except ValueError:
-            opening_stock = 0.0
+		btchNo = None
 
-        try:
-            rrp = float(item_data.get("custom_recommended_retail_price") or 0.0)
-        except ValueError:
-            rrp = default_price
+		item_code = None
+		for _ in range(5):
+			try:
+				if all([country_code, itemTyCd, packaging_unit_code, qtyUnitCd]):
+					rand_num = random.randint(1, 9999999)
+					formatted = f"{rand_num:07d}"
+					item_code_candidate = f"{country_code}{itemTyCd}{packaging_unit_code}{qtyUnitCd}{formatted}"
+					if not frappe.db.exists("Item", {"item_code": item_code_candidate}):
+						item_code = item_code_candidate
+						break
+				else:
+					frappe.throw("Missing required codes for item_code generation.")
+			except Exception as e:
+				frappe.throw(f"Random code generation failed: {e}")
+		else:
+			frappe.throw("Failed to generate a unique item code after 5 attempts.")
 
-        created_by = item_data.get("owner", "System").strip()
+		self.item_code = item_code
+		self.name = item_code
 
-        # Generate unique item code
-        item_code = None
-        for _ in range(5):
-            rand_num = random.randint(1, 9999999)
-            formatted = f"{rand_num:07d}"
-            candidate = f"{country_code}{itemTyCd}{packaging_unit_code}{qtyUnitCd}{formatted}"
-            if not frappe.db.exists("Item", {"item_code": candidate}):
-                item_code = candidate
-                break
-        if not item_code:
-            raise ValueError("Failed to generate a unique item code.")
+		opening_stock = 0.0
+		try:
+			raw_opening_stock = item_data.get("opening_stock")
+			if raw_opening_stock is not None and str(raw_opening_stock).strip() != "":
+				opening_stock = float(raw_opening_stock)
+		except ValueError:
+			frappe.throw("Invalid opening_stock value. Must be a number.")
 
-        payload = {
-            "tpin": zra_obj.get_tpin(),
-            "bhfId": zra_obj.get_branch_code(),
-            "itemCd": item_code,
-            "itemClsCd": itemClsCd,
-            "itemTyCd": itemTyCd,
-            "itemNm": item_name,
-            "orgnNatCd": country_code,
-            "pkgUnitCd": packaging_unit_code,
-            "qtyUnitCd": qtyUnitCd,
-            "vatCatCd": vatCatCd,
-            "iplCatCd": iplCatCd,
-            "tlCatCd": tlCatCd,
-            "exciseTxCatCd": exciseTxCatCd,
-            "dftPrc": default_price,
-            "rrp": rrp,
-            "sftyQty": opening_stock,
-            "isrcAplcbYn": "N",
-            "useYn": "Y",
-            "regrNm": created_by,
-            "regrId": created_by,
-            "modrNm": created_by,
-            "modrId": created_by
-        }
+		default_price = 0.0
+		try:
+			raw_default_price = item_data.get("standard_rate")
+			if raw_default_price is not None and str(raw_default_price).strip() != "":
+				default_price = float(raw_default_price)
+		except ValueError:
+			frappe.throw("Invalid standard_rate value. Must be a number.")
 
-        return payload
+		created_by = item_data.get("owner", "System")
 
-    def call_zra_create_item(self):
-        items = self.get_items()
-        zra_obj = ZRAClient()
+		payload = {
+			"tpin": zra_obj.get_tpin(),
+			"bhfId": zra_obj.get_branch_code(),
+			"itemCd": item_code,
+			"itemClsCd": zra_obj.get_classification_code(get_item_class_code),
+			"itemTyCd": itemTyCd,
+			"itemNm": item_data.get("item_name"),
+			"orgnNatCd": country_code,
+			"pkgUnitCd": packaging_unit_code,
+			"qtyUnitCd": qtyUnitCd,
+			"vatCatCd": vatCatCd,
+			"iplCatCd": iplCatCd,
+			"tlCatCd": tlCatCd,
+			"exciseTxCatCd": exciseTxCatCd,
+			"btchNo": btchNo,
+			"bcd": barcode,
+			"dftPrc": default_price,
+			"rrp": rrp,
+			"svcChargeYn": svcChargeYn,
+			"rentalYn": rentalYn,
+			"addInfo": add_info,
+			"sftyQty": opening_stock,
+			"isrcAplcbYn": "N",
+			"useYn": "Y",
+			"regrNm": created_by,
+			"regrId": created_by,
+			"modrNm": created_by,
+			"modrId": created_by
+		}
 
-        for item_data in items:
-            try:
-                payload = self.prepare_payload(item_data)
-                logger.info(f"Payload being sent: {json.dumps(payload, ensure_ascii=False)}")
-                responseCd = zra_obj.create_item_zra([payload])
+		print("Payload being sent:", json.dumps(payload, indent=2))
+		zra_obj = zraItem()
+		response = zra_obj.create_item_zra(payload)
 
-                if responseCd == "000":
-                    status = "Approved"
-                elif responseCd in ("400", "409", "910"):
-                    status = "Failed"
-                else:
-                    status = "Pending"
+		try:
+			data = response.json()
+			print(data)
+			result_cd = data.get("resultCd")
 
-                self.update_status_for_item(payload["itemCd"], status)
+			if result_cd == "000":
+				frappe.msgprint("Item has been saved successfully.")
+				site = "erpnext.localhost"
+				item_code = payload["itemCd"]
+				zra_instance.update_item_status_by_item_code(item_code, 1, 10, site)
 
-            except Exception as e:
-                logger.error(f"Error creating item {item_data.get('item_name')}: {e}")
-                continue
+				return data
+			else:
+				result_cd = data.get("resultCd")
+				if result_cd in RETRYABLE_ERRORS:
+					response = ResponseRetry(payload, task_type=2).determine_task_type()
 
+				else:		
+					RequestException(result_cd or "CREATE_ITEM_ERROR").throw()
 
-@shared_task
-def create_item_task():
-    item_obj = Item()
-    item_obj.call_zra_create_item()
+		except ValueError:
+			RequestException("UNKNOWN_RESPONSE").throw()
 
+		except requests.exceptions.Timeout:
+			RequestException("TIMEOUT").throw()
+
+		except requests.exceptions.RequestException as e:
+			RequestException("REQUEST_FAILED").throw()
 
 
 
