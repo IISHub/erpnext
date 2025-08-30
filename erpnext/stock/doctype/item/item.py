@@ -7,6 +7,7 @@ import random
 import requests
 from erpnext.zra_client.retry.main import ResponseRetry
 from erpnext.zra_client.error.exceptions import RETRYABLE_ERRORS, RequestException
+from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.imports.main import Imports
 from erpnext.zra_client.item.main import zraItem
 from erpnext.zra_client.main import ZRAClient
@@ -350,9 +351,11 @@ class Item(Document):
 		print("Payload being sent:", json.dumps(payload, indent=2))
 		zra_obj = zraItem()
 		response = zra_obj.create_item_zra(payload)
+		# mock_results = mock_zra_response()
 
 		try:
 			data = response.json()
+			# data = mock_results
 			print(data)
 			result_cd = data.get("resultCd")
 

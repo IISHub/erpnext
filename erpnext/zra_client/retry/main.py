@@ -14,18 +14,18 @@ class ResponseRetry(ZRAClient):
         if site_url:
             self.site_url = site_url
 
-    def create_customer(self):
+    def create_customer_retry(self):
         customer_tpin = self.payload.get("custTpin")
         attempt = 0
 
         while attempt < self.max_attempts:
             attempt += 1
-            data = mock_zra_response()
+            data = self.create_customer(self.payload)
             print(f"Attempt {attempt}: {data}")
 
             if data.get("resultCd") == "000":
                 frappe.msgprint("Customer has been saved successfully.")
-                self.update_customer_status_by_tpin(customer_tpin, 1)
+                self.update_customer_status_by_tpin(customer_tpin, 1, 10, self.get_site_url())
                 return data
             elif data.get("resultCd") in RETRYABLE_ERRORS:
                 print(f"Retryable error: {data.get('resultMsg')}, retrying in 2s...")
@@ -33,21 +33,22 @@ class ResponseRetry(ZRAClient):
             else:
                 RequestException(data.get("resultCd") or "CREATE_CUSTOMER_ERROR").throw()
 
-        self.update_customer_status_by_tpin(customer_tpin, 0)
-        RequestException("MAX_RETRIES_EXCEEDED").throw()
+        self.update_customer_status_by_tpin(customer_tpin, 0, 10, self.get_site_url())
+        frappe.msgprint("The request failed after multiple attempts. It will be retried when ZRA is back online.")
+        return None
 
     def create_item(self):
-        item_code = self.payload.get("itemTyCd")
+        item_code = self.payload.get("itemCd")
         attempt = 0
 
         while attempt < self.max_attempts:
             attempt += 1
-            data = mock_zra_response()
+            data = self.create_item_zra(self.payload)
             print(f"Attempt {attempt}: {data}")
 
             if data.get("resultCd") == "000":
                 frappe.msgprint("Item has been saved successfully.")
-                self.update_item_status_by_item_code(item_code, 1)
+                self.update_item_status_by_item_code(item_code, 1,  10, self.get_site_url())
                 return data
             elif data.get("resultCd") in RETRYABLE_ERRORS:
                 print(f"Retryable error: {data.get('resultMsg')}, retrying in 2s...")
@@ -55,8 +56,9 @@ class ResponseRetry(ZRAClient):
             else:
                 RequestException(data.get("resultCd") or "CREATE_ITEM_ERROR").throw()
 
-        self.update_item_status_by_item_code(item_code, 0)
-        RequestException("MAX_RETRIES_EXCEEDED").throw()
+        self.update_item_status_by_item_code(item_code, 0,  10, self.get_site_url())
+        frappe.msgprint("The request failed after multiple attempts. It will be retried when ZRA is back online.")
+        return None
 
     def create_purchase_retry(self):
         purchase_inv_no = self.payload.get("cisInvcNo")
@@ -82,7 +84,7 @@ class ResponseRetry(ZRAClient):
 
     def determine_task_type(self):
         if self.task_type == 1:
-            return self.create_customer()
+            return self.create_customer_retry()
         elif self.task_type == 2:
             return self.create_item()
         elif self.task_type == 3:

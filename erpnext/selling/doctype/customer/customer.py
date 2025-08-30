@@ -7,6 +7,7 @@ from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.error.exceptions import RequestException, RETRYABLE_ERRORS
 from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.main import ZRAClient
+from erpnext.zra_client.purchase.main import ResponseRetry
 import frappe
 import frappe.defaults
 from frappe import _, msgprint, qb
@@ -202,9 +203,10 @@ class Customer(TransactionBase):
             "modrId": created_by
         }
 		result = zra_client.create_customer(payload)
-		print(result)
+		# mock_results = mock_zra_response()
 		try:
 			data = result.json()
+			# data = mock_results
 			if data.get("resultCd") == "000":
 				frappe.msgprint("Customer has been saved successfully.")
 				site = "erpnext.localhost"
@@ -215,13 +217,18 @@ class Customer(TransactionBase):
 			else:
 				result_cd = data.get("resultCd")
 				if result_cd in RETRYABLE_ERRORS:
-					frappe.throw(f"Temporary error occurred: {RETRYABLE_ERRORS.get(result_cd, 'Unknown error')}")
-
+					response = ResponseRetry(payload, task_type=1).determine_task_type()
 				else:		
 					RequestException(result_cd or "CREATE_CUSTOMER_ERROR").throw()
 
 		except ValueError:
 			RequestException("UNKNOWN_RESPONSE").throw()
+
+		except requests.exceptions.Timeout:
+			RequestException("TIMEOUT").throw()
+
+		except requests.exceptions.RequestException as e:
+			RequestException("REQUEST_FAILED").throw()
 
 
 
