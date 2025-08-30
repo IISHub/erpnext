@@ -1,5 +1,4 @@
 from erpnext.zra_client.error.exceptions import RETRYABLE_ERRORS
-from erpnext.zra_client.mock.mock import mock_zra_response
 from erpnext.zra_client.retry.main import RequestException, ResponseRetry
 import frappe
 import requests
@@ -306,17 +305,15 @@ class zraPurchase(ZRAClient):
         }
 
 
-        response = self.create_purchase_zra_client(payload)
-        # response = mock_zra_response()
-        print("Mocked ZRA Response:", response)
+       # response = self.create_purchase_zra_client(payload)
         try:
             response_data = response.json()
-            # response_data = response
         except ValueError:
             frappe.throw("Invalid JSON returned from ZRA API")
 
         self.to_use_data = payload
-        result_code = response_data.get("resultCd")
+       # result_code = response_data.get("resultCd")
+       result_code = "801"
         result_msg = response_data.get("resultMsg", "Unknown error")
 
         if result_code == "000":

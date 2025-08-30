@@ -54,6 +54,9 @@ class ZRAClient:
     def get_branch_code(self):
         return self.branch_code
 
+    def get_site_url(self):
+        return self.site_url
+
 
     def update_customer_status_by_tpin(self, tpin, status, delay, site):
         def worker():
@@ -131,6 +134,7 @@ class ZRAClient:
         threading.Thread(target=worker, daemon=True).start()
 
     def update_purchase_status_by_inv_no(self, inv_no, status, delay=0, site=None):
+        print(f"Scheduling update for Purchase Invoice '{inv_no}' to status '{status}' after {delay} seconds on site '{site or 'current site'}'.")
         """
         Update the custom submission status of a Purchase Invoice by its name.
 
