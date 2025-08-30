@@ -1,3 +1,5 @@
+from erpnext.zra_client.error.exceptions import RETRYABLE_ERRORS
+from erpnext.zra_client.retry.main import RequestException, ResponseRetry
 import frappe
 import requests
 from datetime import datetime
@@ -316,8 +318,15 @@ class zraPurchase(ZRAClient):
         if result_code == "000":
             frappe.msgprint("Purchase saved successfully")
             self._update_stock_after_purchase(modified_by)
+            site = self.site_url
+            self.update_purchase_status_by_inv_no(name, 1, 10, site)
         else:
-            frappe.throw(f"Purchase save failed: {result_msg}")
+            result_cd = result_code
+            if result_cd in RETRYABLE_ERRORS:
+                response = ResponseRetry(payload, task_type=3).determine_task_type()
+            else:		
+                RequestException(result_cd or "CREATE_ITEM_ERROR").throw()
+        
 
     def _update_stock_after_purchase(self, modified_by):
         update_stock_items = []

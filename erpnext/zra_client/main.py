@@ -24,7 +24,7 @@ ZRA_SALE = "/trnsSales/saveSales"
 UPDATE_IMPORT = "/imports/updateImportItems"
 SAVE_ITEM_COMPOSITION = "/items/saveItemComposition"
 INTERNAL_URL = "http://0.0.0.0:7000/"
-
+CURRENT_SITE = "erpnext.localhost"
 BRANCH_CODE = "000"
 TPIN = "2484778002"
 ORIGIN_SCD_ID = "SDC0010002709"
@@ -46,6 +46,7 @@ class ZRAClient:
         self.tpin = TPIN
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
+        self.site_url = CURRENT_SITE
 
     def get_tpin(self):
         return self.tpin
@@ -128,6 +129,57 @@ class ZRAClient:
                 frappe.destroy()
     
         threading.Thread(target=worker, daemon=True).start()
+
+    def update_purchase_status_by_inv_no(self, inv_no, status, delay=0, site=None):
+        """
+        Update the custom submission status of a Purchase Invoice by its name.
+
+        :param inv_no: The name of the Purchase Invoice (primary key)
+        :param status: 0 = Pending, 1 = Approved, else Failed
+        :param delay: Delay in seconds before updating
+        :param site: Frappe site (optional, defaults to current site)
+        """
+        print(f"Scheduling update for Purchase Invoice '{inv_no}' to status '{status}' after {delay} seconds on site '{site or 'current site'}'.")
+
+        def worker():
+            site_to_use = site or frappe.local.site
+            frappe.init(site=site_to_use)
+            frappe.connect()
+            frappe.set_user("Administrator")
+
+            try:
+                if status == 0:
+                    actual_status = "Pending"
+                elif status == 1:
+                    actual_status = "Approved"
+                else:
+                    actual_status = "Failed"
+
+                print(f"Waiting {delay} seconds before updating Purchase Invoice '{inv_no}'...")
+                time.sleep(delay)
+                try:
+                    purchase_doc = frappe.get_doc("Purchase Invoice", inv_no)
+                except frappe.DoesNotExistError:
+                    print(f"No Purchase Invoice found with name '{inv_no}'.")
+                    return
+                purchase_doc.db_set(
+                    "custom__submission_status",
+                    actual_status,
+                    update_modified=False
+                )
+                frappe.db.commit()
+
+                print(f"Purchase Invoice '{inv_no}' status updated to '{actual_status}'.")
+
+            except Exception as e:
+                print(f"Error updating Purchase Invoice '{inv_no}': {e}")
+
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
 
     
 
