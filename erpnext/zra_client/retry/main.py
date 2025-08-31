@@ -82,6 +82,37 @@ class ResponseRetry(ZRAClient):
         self.update_purchase_status_by_inv_no(purchase_inv_no, 0, 10, self.get_site_url())
         frappe.msgprint("The request failed after multiple attempts. It will be retried when ZRA is back online.")
 
+
+    def create_sales_invoice_retry(self):
+        sales_inv_no = self.payload.get("cisInvcNo")
+        print("SALES NUMBER: ", sales_inv_no)
+        attempt = 0
+
+        while attempt < self.max_attempts:
+            attempt += 1
+            data = mock_zra_response()
+            print(f"Attempt {attempt}: {data}")
+
+            if data.get("resultCd") == "000":
+                frappe.msgprint("Sales invoice has been saved successfully.")
+                self.update_sales_status_by_inv_no(sales_inv_no, 1, 10, self.get_site_url())
+                return data
+            elif data.get("resultCd") in RETRYABLE_ERRORS:
+                print(f"Retryable error: {data.get('resultMsg')}, retrying in 2s...")
+                time.sleep(2)
+            else:
+                RequestException(data.get("resultCd") or "CREATE_SALES_ERROR").throw()
+
+        self.update_sales_status_by_inv_no(sales_inv_no, 0, 10, self.get_site_url())
+        frappe.msgprint("The request failed after multiple attempts. It will be retried when ZRA is back online.")
+        return None
+
+
+
+
+
+
+
     def determine_task_type(self):
         if self.task_type == 1:
             return self.create_customer_retry()
@@ -89,6 +120,9 @@ class ResponseRetry(ZRAClient):
             return self.create_item()
         elif self.task_type == 3:
             return self.create_purchase_retry()
+
+        elif self.task_type == 4:
+            return self.create_sales_invoice_retry()
         else:
             RequestException("UNKNOWN_TASK_TYPE").throw()
 

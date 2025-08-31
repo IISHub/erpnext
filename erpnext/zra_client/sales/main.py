@@ -1,11 +1,19 @@
+from erpnext.zra_client.retry.main import RETRYABLE_ERRORS, ResponseRetry
 from erpnext.zra_client.main import RequestException, ZRAClient
-import os
-import frappe
-import json
-import random
-from datetime import datetime
+from erpnext.zra_client.purchase.main import mock_zra_response
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime
 import requests
+import frappe
+import random
+import json
+import os
+
+
+
+
+
+
 
 class NormaSale(ZRAClient):
     def __init__(self):
@@ -420,7 +428,9 @@ class NormaSale(ZRAClient):
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
         response = self.create_normal_sale_helper(payload)
+        # mock_results = mock_zra_response()
         response = response.json()
+        # response = mock_results
         print(f"Response from ZRA: {response}")
         
         if response.get("resultCd") == "000":
@@ -433,6 +443,9 @@ class NormaSale(ZRAClient):
 
             print("This prints immediately, before delayed print")
             ocrnDt = datetime.now().strftime("%Y%m%d")
+            site = "erpnext.localhost"
+            
+            self.update_sales_status_by_inv_no(name ,1, 12, site)
             print(self.to_use_data)
             if is_stock_updated == 1:
                 print("Updating stock items...")
@@ -498,9 +511,20 @@ class NormaSale(ZRAClient):
 
                 print(update_stock_payload, update_stock_master_items)
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
-        else:
+                
+        elif response.get("resultCd") in RETRYABLE_ERRORS:
             result_cd = response.get("resultCd")
-            RequestException(result_cd or "SALE_ERROR").throw()
+            if result_cd in RETRYABLE_ERRORS:
+                response = ResponseRetry(payload, task_type=4).determine_task_type()
+            else:        
+                RequestException(result_cd or "CREATE_CUSTOMER_ERROR").throw()
+        else:
+            try:
+                RequestException("UNKNOWN_RESPONSE").throw()
+            except requests.exceptions.Timeout:
+                RequestException("TIMEOUT").throw()
+            except requests.exceptions.RequestException:
+                RequestException("REQUEST_FAILED").throw()
 
 
 

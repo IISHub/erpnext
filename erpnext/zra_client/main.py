@@ -58,6 +58,42 @@ class ZRAClient:
         return self.site_url
 
 
+    def update_sales_status_by_inv_no(self, sales_inv_no, status, delay, site):
+        def worker():
+            try:
+                frappe.init(site)
+                frappe.connect()
+                frappe.set_user("Administrator")  
+
+                status_map = {0: "Pending", 1: "Approved"}
+                actual_status = status_map.get(status, "Failed")
+
+                print(f"Waiting {delay} seconds before updating Sales Invoice '{sales_inv_no}' on site '{site}'...")
+                time.sleep(delay)
+
+                invoice_list = frappe.get_all("Sales Invoice", filters={"name": sales_inv_no}, limit=1)
+                if not invoice_list:
+                    print(f"No Sales Invoice found with number '{sales_inv_no}' on site '{site}'.")
+                    return
+
+                invoice_doc = frappe.get_doc("Sales Invoice", invoice_list[0].name)
+                invoice_doc.zra_status = actual_status
+                invoice_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Sales Invoice '{sales_inv_no}' status updated to '{actual_status}' on site '{site}'.")
+
+            except Exception as e:
+                print(f"Error updating Sales Invoice '{sales_inv_no}' on site '{site}': {e}")
+
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+
+
     def update_customer_status_by_tpin(self, tpin, status, delay, site):
         def worker():
             try:
