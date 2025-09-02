@@ -65,8 +65,13 @@ class ZRAClient:
                 frappe.connect()
                 frappe.set_user("Administrator")  
 
-                status_map = {0: "Pending", 1: "Approved"}
-                actual_status = status_map.get(status, "Failed")
+                actual_status = None
+                if status == 0:
+                    actual_status = "Pending"
+                elif status == 1:
+                    actual_status = "Approved"
+                else:
+                    actual_status = "Failed"
 
                 print(f"Waiting {delay} seconds before updating Sales Invoice '{sales_inv_no}' on site '{site}'...")
                 time.sleep(delay)
@@ -77,7 +82,7 @@ class ZRAClient:
                     return
 
                 invoice_doc = frappe.get_doc("Sales Invoice", invoice_list[0].name)
-                invoice_doc.zra_status = actual_status
+                invoice_doc.custom_submission_status = actual_status
                 invoice_doc.save(ignore_permissions=True)
                 frappe.db.commit()
 
@@ -92,42 +97,42 @@ class ZRAClient:
         threading.Thread(target=worker, daemon=True).start()
 
 
-
-
-    def update_customer_status_by_tpin(self, tpin, status, delay, site):
+    def update_sales_status_by_inv_no(self, sales_inv_no, status, delay, site=None):
         def worker():
+            site_to_use = site or frappe.local.site
+            
             try:
-                frappe.init(site)
+                frappe.init(site=site_to_use)
                 frappe.connect()
-                frappe.set_user("Administrator")  
-
+                frappe.set_user("Administrator")
+            
                 status_map = {0: "Pending", 1: "Approved"}
                 actual_status = status_map.get(status, "Failed")
 
-                print(f"Waiting {delay} seconds before updating TPIN '{tpin}' on site '{site}'...")
+                print(f"Waiting {delay} seconds before updating Sales Invoice '{sales_inv_no}'...")
                 time.sleep(delay)
-
-                customer_list = frappe.get_all("Customer", filters={"custom_tpin": tpin}, limit=1)
-                if not customer_list:
-                    print(f"No customer found with TPIN '{tpin}' on site '{site}'.")
+                sales_list = frappe.get_all("Sales Invoice", filters={"name": sales_inv_no}, limit=1)
+                if not sales_list:
+                    print(f"No Sales Invoice found with code '{sales_inv_no}'.")
                     return
 
-                customer_doc = frappe.get_doc("Customer", customer_list[0].name)
-                customer_doc.custom_submission_status = actual_status
-                customer_doc.save(ignore_permissions=True)
+                item_doc = frappe.get_doc("Sales Invoice", sales_list[0].name)
+                item_doc.custom_submission_status = actual_status
+
+                item_doc.flags.ignore_validate_update_after_submit = True
+                item_doc.save(ignore_permissions=True)
                 frappe.db.commit()
 
-                print(f"Customer with TPIN '{tpin}' status updated to '{actual_status}' on site '{site}'.")
+                print(f"Sales Invoice '{sales_inv_no}' status updated to '{actual_status}'.")
 
             except Exception as e:
-                print(f"Error updating customer TPIN '{tpin}' on site '{site}': {e}")
+                print(f"Error updating Sales Invoice '{sales_inv_no}': {e}")
 
             finally:
                 frappe.destroy()
 
+        # Run in background thread
         threading.Thread(target=worker, daemon=True).start()
-
-
 
 
     def update_item_status_by_item_code(self, item_code, status, delay, site):
