@@ -19,7 +19,9 @@ from erpnext.stock.doctype.item.item import get_item_details
 from erpnext.stock.get_item_details import ItemDetailsCtx, get_conversion_factor, get_price_list_rate
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
+from erpnext.zra_client.item.main import zraItem
 
+zraItemInstance = zraItem()
 
 class BOMRecursionError(frappe.ValidationError):
 	pass
@@ -176,7 +178,6 @@ class BOM(WebsiteGenerator):
 
 	def autoname(self):
 		# ignore amended documents while calculating current index
-
 		search_key = f"{self.doctype}-{self.item}%"
 		existing_boms = frappe.get_all(
 			"BOM", filters={"name": search_key, "amended_from": ["is", "not set"]}, pluck="name"
@@ -186,18 +187,19 @@ class BOM(WebsiteGenerator):
 
 		prefix = self.doctype
 		suffix = "%.3i" % index  # convert index to string (1 -> "001")
-		bom_name = f"{prefix}-{self.item}-{suffix}"
-
-		if len(bom_name) <= 140:
-			name = bom_name
+		
+		# Calculate available space for item name (max 20 chars total)
+		# prefix + "-" + item + "-" + suffix = max 20
+		available_item_length = 20 - (len(prefix) + len(suffix) + 2)  # +2 for two hyphens
+		
+		if available_item_length > 0:
+			truncated_item = self.item[:available_item_length]
+			# If a partial word is found after truncate, remove the extra characters
+			truncated_item = truncated_item.rsplit(" ", 1)[0] if " " in truncated_item else truncated_item
+			name = f"{prefix}-{truncated_item}-{suffix}"
 		else:
-			# since max characters for name is 140, remove enough characters from the
-			# item name to fit the prefix, suffix and the separators
-			truncated_length = 140 - (len(prefix) + len(suffix) + 2)
-			truncated_item_name = self.item[:truncated_length]
-			# if a partial word is found after truncate, remove the extra characters
-			truncated_item_name = truncated_item_name.rsplit(" ", 1)[0]
-			name = f"{prefix}-{truncated_item_name}-{suffix}"
+			# If there's no space for item name, use minimal format
+			name = f"{prefix}-{suffix}"[:20]
 
 		if frappe.db.exists("BOM", name):
 			existing_boms = frappe.get_all(
@@ -206,7 +208,15 @@ class BOM(WebsiteGenerator):
 
 			index = self.get_index_for_bom(existing_boms)
 			suffix = "%.3i" % index
-			name = f"{prefix}-{self.item}-{suffix}"
+			
+			# Recalculate with new index
+			available_item_length = 20 - (len(prefix) + len(suffix) + 2)
+			if available_item_length > 0:
+				truncated_item = self.item[:available_item_length]
+				truncated_item = truncated_item.rsplit(" ", 1)[0] if " " in truncated_item else truncated_item
+				name = f"{prefix}-{truncated_item}-{suffix}"
+			else:
+				name = f"{prefix}-{suffix}"[:20]
 
 		self.name = name
 
@@ -308,8 +318,7 @@ class BOM(WebsiteGenerator):
 
 	def on_submit(self):
 		repackage_data = self.as_dict()
-		print(repackage_data)
-		raise Exception("This is a forced error that always fails.")
+		zraItemInstance.save_item_composition(repackage_data)
 		self.manage_default_bom()
 		self.update_bom_creator_status()
 

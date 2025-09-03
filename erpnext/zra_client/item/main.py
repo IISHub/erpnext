@@ -1,5 +1,6 @@
 from datetime import datetime
 import random
+from erpnext.zra_client.error.exceptions import RequestException
 import requests
 import json
 import frappe
@@ -39,6 +40,9 @@ class zraItem(ZRAClient):
 
     def create_item_helper(self, payload):
         self.create_item_zra(payload)
+
+    def create_item_composition_helper(self, payload):
+        return self.create_item_composition_zra_client(payload)
 
     def create_item(self, item_data):
         
@@ -145,8 +149,54 @@ class zraItem(ZRAClient):
 
         # self.update_item_in_background(self.update_url, payload)
 
+    def save_item_composition(self, composition_data):
+        print("Composition Data Received:", composition_data)
+        modified_by = composition_data.get("modified_by")
+        itemCd = composition_data.get("item")
+        name = composition_data.get("name")
 
+        item_data = composition_data.get("items", [])
+        itemQtyUsed = 0
         
+        for item in item_data:
+            quantity = item.get("qty", 0)  # Default to 0 if not found
+            
+            # Also check if it's a valid number
+            try:
+                quantity = float(quantity)
+            except (TypeError, ValueError):
+                quantity = 0
+                
+            itemQtyUsed += quantity 
+
+        if itemQtyUsed <= 0:
+            frappe.throw("Total quantity used must be greater than zero.")
+
+        payload = {
+            "tpin": self.tpin, 
+            "bhfId": self.branch_code, 
+            "itemCd": itemCd, 
+            "cpstItemCd": name, 
+            "cpstQty": itemQtyUsed, 
+            "regrId": modified_by, 
+            "regrNm": modified_by
+        }
+
+        print("Item Composition Payload:", json.dumps(payload, indent=2))
+        response = self.create_item_composition_helper(payload)
+        response = response.json()
+        print(response)
+        if response.get("resultCd") == "000":
+            frappe.msgprint("Item composition saved successfully.")
+        else:
+            try:
+                resultCd = response.get("resultCd")
+                RequestException(resultCd or "UNKNOWN_RESPONSE").throw()
+            except requests.exceptions.Timeout:
+                RequestException("TIMEOUT").throw()
+            except requests.exceptions.RequestException:
+                RequestException("REQUEST_FAILED").throw()
+
     
     
 

@@ -399,7 +399,14 @@ class ZRAClient:
                 response.raise_for_status() 
                 return response 
         return known_error_check(call_create_item)
-        
+    
+
+    def create_item_composition_zra_client(self, payload):
+        def call_create_item_composition():
+            response = requests.post(url=self.save_item_composition_url, json=payload, timeout=300)
+            response.raise_for_status()
+            return response
+        return known_error_check(call_create_item_composition)
     
     def create_customer(self, payload):
         def call_create_customer():

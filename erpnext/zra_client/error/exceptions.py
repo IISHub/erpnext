@@ -46,7 +46,7 @@ ERRORS = {
     "901": "It is not valid device.",
     "902": "This device is installed.",
     "903": "Only VSDC device can be verified.",
-    "910": "Request parameter error.",
+    "910": "We couldn't process your request because some information was missing or incorrect. Please check your entries and try again.",
     "911": "There is no request full text.",
     "912": "There is a request Method error.",
     "913": "Code value error among request parameters.",
@@ -65,7 +65,6 @@ ERRORS = {
     "994": "There is an overlapped data.",
     "995": "There is no downloaded file.",
     "999": "There is an unknown error. Please ask the administrator.",
-    "910": "Invalid Item Class Code",
     '001': "There is no search result",
 }
 
