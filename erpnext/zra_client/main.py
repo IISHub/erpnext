@@ -57,6 +57,50 @@ class ZRAClient:
     def get_site_url(self):
         return self.site_url
 
+    def update_item_status_by_item_code(self, item_code, status, delay, site):
+        def worker():
+            try:
+                frappe.init(site)
+                frappe.connect()
+                frappe.set_user("Administrator")  
+
+                actual_status = None
+                if status == 0:
+                    actual_status = "Pending"
+                elif status == 1:
+                    actual_status = "Approved"
+                else:
+                    actual_status = "Failed"
+
+                print(f"Waiting {delay} seconds before updating Item '{item_code}' on site '{site}'...")
+                time.sleep(delay)
+
+                item_list = frappe.get_all("Item", filters={"item_code": item_code}, limit=1)
+                if not item_list:
+                    print(f"No Item found with code '{item_code}' on site '{site}'.")
+                    return
+
+                item_doc = frappe.get_doc("Item", item_list[0].name)
+    
+                if hasattr(item_doc, 'custom__submission_status'):
+                    item_doc.custom__submission_status = actual_status
+                else:
+                    print(f"Item '{item_code}' doesn't have a status field to update on site '{site}'")
+                    return
+                
+                item_doc.save(ignore_permissions=True)
+                frappe.db.commit()
+
+                print(f"Item '{item_code}' status updated to '{actual_status}' on site '{site}'.")
+
+            except Exception as e:
+                print(f"Error updating Item '{item_code}' on site '{site}': {e}")
+
+            finally:
+                frappe.destroy()
+
+        threading.Thread(target=worker, daemon=True).start()
+
 
     def update_sales_status_by_inv_no(self, sales_inv_no, status, delay, site):
         def worker():
@@ -135,7 +179,7 @@ class ZRAClient:
         threading.Thread(target=worker, daemon=True).start()
 
 
-    def update_item_status_by_item_code(self, item_code, status, delay, site):
+    def update_customer_status_by_tpin(self, tpin, status, delay, site):
         def worker():
             site_to_use = site or frappe.local.site
             
@@ -151,28 +195,36 @@ class ZRAClient:
                 else:
                     actual_status = "Failed"
 
-                print(f"Waiting {delay} seconds before updating item '{item_code}'...")
+                print(f"Waiting {delay} seconds before updating customer with TPIN '{tpin}'...")
                 time.sleep(delay)
-
-                item_list = frappe.get_all("Item", filters={"item_code": item_code}, limit=1)
-                if not item_list:
-                    print(f"No item found with code '{item_code}'.")
+                customer_list = frappe.get_all("Customer", filters={"custom_tpin": tpin}, limit=1)
+                if not customer_list:
+                    print(f"No customer found with TPIN '{tpin}'.")
                     return
 
-                item_doc = frappe.get_doc("Item", item_list[0].name)
-                item_doc.custom__submission_status = actual_status
-                item_doc.save(ignore_permissions=True)
+                customer_doc = frappe.get_doc("Customer", customer_list[0].name)
+                
+                if hasattr(customer_doc, 'custom__submission_status'):
+                    customer_doc.custom__submission_status = actual_status
+                elif hasattr(customer_doc, 'custom__submission_status'):
+                    customer_doc.custom__submission_status = actual_status
+                else:
+                    print(f"Customer with TPIN '{tpin}' doesn't have a status field to update.")
+                    return
+                    
+                customer_doc.save(ignore_permissions=True)
                 frappe.db.commit()
 
-                print(f"Item '{item_code}' status updated to '{actual_status}'.")
+                print(f"Customer with TPIN '{tpin}' status updated to '{actual_status}'.")
             
             except Exception as e:
-                print(f"Error updating item '{item_code}': {e}")
+                print(f"Error updating customer with TPIN '{tpin}': {e}")
             
             finally:
                 frappe.destroy()
-    
+        
         threading.Thread(target=worker, daemon=True).start()
+
 
     def update_purchase_status_by_inv_no(self, inv_no, status, delay=0, site=None):
         print(f"Scheduling update for Purchase Invoice '{inv_no}' to status '{status}' after {delay} seconds on site '{site or 'current site'}'.")

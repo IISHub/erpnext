@@ -1078,12 +1078,33 @@ function handle_import_fields(frm) {
 
 frappe.ui.form.on("Item", {
     before_save(frm) {
+        if (!validate_required(frm)) {
+            return false;  // stop save
+        }
         showSpinner();
     },
     before_submit(frm) {
+        if (!validate_required(frm)) {
+            return false;  // stop submit
+        }
         showSpinner();
     }
 });
+
+function validate_required(frm) {
+    let missing = [];
+
+    frm.meta.fields.forEach(df => {
+        if (df.reqd && !frm.doc[df.fieldname]) {
+            missing.push(df.label);
+        }
+    });
+
+    if (missing.length > 0) {
+        return false;
+    }
+    return true;
+}
 
 $(document).ajaxComplete(function(event, xhr, settings) {
     if (settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||
@@ -1116,6 +1137,7 @@ function showSpinner() {
 function hideSpinner() {
     $("#custom-spinner-modal").remove();
 }
+
 
 // Hide the field
 frappe.ui.form.on('Item', {

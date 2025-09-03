@@ -267,12 +267,33 @@ frappe.ui.form.on("Customer", {
 
 frappe.ui.form.on("Customer", {
     before_save(frm) {
+        if (!validate_required(frm)) {
+            return false; 
+        }
         showSpinner();
     },
     before_submit(frm) {
+        if (!validate_required(frm)) {
+            return false;  
+        }
         showSpinner();
     }
 });
+
+function validate_required(frm) {
+    let missing = [];
+
+    frm.meta.fields.forEach(df => {
+        if (df.reqd && !frm.doc[df.fieldname]) {
+            missing.push(df.label);
+        }
+    });
+
+    if (missing.length > 0) {
+        return false;
+    }
+    return true;
+}
 
 $(document).ajaxComplete(function(event, xhr, settings) {
     if (settings.url.includes("/api/method/frappe.desk.form.save.savedocs") ||
