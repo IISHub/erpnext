@@ -1,3 +1,4 @@
+from erpnext.zra_client.receipt.build import BuildPdf
 from erpnext.zra_client.retry.main import RETRYABLE_ERRORS, ResponseRetry
 from erpnext.zra_client.main import RequestException, ZRAClient
 from erpnext.zra_client.purchase.main import mock_zra_response
@@ -8,9 +9,6 @@ import frappe
 import random
 import json
 import os
-
-
-
 
 
 
@@ -427,13 +425,17 @@ class NormaSale(ZRAClient):
 
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
-        response = self.create_normal_sale_helper(payload)
-        # mock_results = mock_zra_response()
-        response = response.json()
-        # response = mock_results
+        # response = self.create_normal_sale_helper(payload)
+        mock_results = mock_zra_response()
+        # response = response.json()
+        response = mock_results
         print(f"Response from ZRA: {response}")
         
         if response.get("resultCd") == "000":
+            BuildPdf().build_invoice()
+
+
+            frappe.throw("Testing PDF")
             get_rcpt_no = response.get("data", {}).get("rcptNo")
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             print("Stock master updated successfully after sale.")
@@ -449,8 +451,36 @@ class NormaSale(ZRAClient):
             print(self.to_use_data)
             if is_stock_updated == 1:
                 print("Updating stock items...")
+
                 update_stock_items = []
                 update_stock_master_items = []
+
+                company_info = []
+                company_info.append(
+                    self.get_company_name(),
+                    self.get_company_phone_no(),
+                    self.get_company_email()
+                )
+            
+                customer_info = []
+                customer_info.append(
+                    payload["custTpin"],
+                    payload["custNm"]
+                )
+
+                invoice = []
+                invoice.append(
+                    payload["cisInvcNo"],
+                    self.todays_date(),
+                    
+                )
+                pdf_items = payload["itemList"]
+
+                pdf_totals = []
+                pdf_totals.append(
+
+                )
+
 
                     
                     
@@ -511,6 +541,10 @@ class NormaSale(ZRAClient):
 
                 print(update_stock_payload, update_stock_master_items)
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
+                BuildPdf.build_invoice()
+
+                frappe.throw("Testing PDF")
+
                 
         elif response.get("resultCd") in RETRYABLE_ERRORS:
             result_cd = response.get("resultCd")
@@ -532,6 +566,8 @@ class NormaSale(ZRAClient):
 
 
 class CreditNote(ZRAClient):
+        
+        
         def __init__(self):
             self.taxbl_totals = {key: 0.0 for key in self.TAX_RATES}
             self.tax_amt_totals = {key: 0.0 for key in self.TAX_RATES}

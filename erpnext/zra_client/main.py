@@ -5,6 +5,7 @@ import time
 from urllib.parse import quote
 from frappe import throw, _
 from datetime import datetime
+from datetime import date
 import requests
 import frappe
 import json
@@ -28,6 +29,9 @@ CURRENT_SITE = "erpnext.localhost"
 BRANCH_CODE = "000"
 TPIN = "2484778002"
 ORIGIN_SCD_ID = "SDC0010002709"
+COMPANY_NAME = "IZYANE INOVSOLUTIONS LIMITED"
+COMPANY_PHONE_NO = "+260 777 123456"
+COMPANY_EMAIL = "info@izyane.com"
 
 class ZRAClient:
     def __init__(self):
@@ -47,9 +51,26 @@ class ZRAClient:
         self.branch_code = BRANCH_CODE
         self.org_sdc_id = ORIGIN_SCD_ID
         self.site_url = CURRENT_SITE
+        self.company_name = COMPANY_NAME
+        self.company_phone_number = COMPANY_PHONE_NO
+        self.company_email = COMPANY_EMAIL
 
     def get_tpin(self):
         return self.tpin
+
+    def get_company_name(self):
+        return self.company_name
+
+    def get_company_phone_no(self):
+        return self.company_phone_number
+    
+    def get_company_email(self):
+        return self.company_email
+
+    def todays_date():
+        today = date.today()
+        date = today.strftime("%Y-%m-%d")
+        return date
 
     def get_branch_code(self):
         return self.branch_code
