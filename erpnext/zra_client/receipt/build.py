@@ -1,18 +1,19 @@
 from erpnext.zra_client.receipt.generate import InvoicePDF
+
 class BuildPdf:
-    def build_invoice(self, company_info, customer_info, invoice, items):
+    def build_invoice(self, company_info, customer_info, invoice, items, sdc_data):
         # Extract values from the lists/tuples
         company_name, company_phone, company_email = company_info[0]
         cust_tpin, cust_name = customer_info[0]
         invoice_number, invoice_date = invoice[0]
+        current_date, sdc_id = sdc_data[0]
 
-        # Prepare invoice_data dict dynamically
+        # Prepare invoice_data dict dynamically with SDC info
         invoice_data = {
             "company": {
                 "name": company_name,
                 "phone": company_phone,
                 "email": company_email,
-                # optional TPIN, add if you have a method for it
                 "tpin": getattr(self, "get_company_tpin", lambda: "")()
             },
             "customer": {
@@ -43,8 +44,13 @@ class BuildPdf:
                 "currency": "ZMW",
                 "exchange_rate": "1 ZMW = 1.0000 ZMW"
             },
-            # Optional sections
-            "sdc_info": {},
+            "sdc_info": {
+                "invoice_date": invoice_date,
+                "sdc_id": sdc_id,
+                "invoice_number": invoice_number,
+                "invoice_type": "Normal invoice",
+                "current_date": current_date
+            },
             "payment": {"type": "Cash"},
             "internal_data": {}
         }
@@ -52,4 +58,3 @@ class BuildPdf:
         # Save PDF
         file_doc = InvoicePDF(invoice_data).build_pdf()
         print("PDF saved with file ID:", file_doc)
-

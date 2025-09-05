@@ -435,37 +435,37 @@ class NormaSale(ZRAClient):
         
         if response.get("resultCd") == "000":
 
-            # company_info = []
-            # company_info.append((
-            #     self.get_company_name(),
-            #     self.get_company_phone_no(),
-            #     self.get_company_email()
-            # ))
+            company_info = []
+            company_info.append((
+                self.get_company_name(),
+                self.get_company_phone_no(),
+                self.get_company_email()
+            ))
 
         
-            # customer_info = []
-            # customer_info.append((
-            #     payload["custTpin"],
-            #     payload["custNm"]
-            # ))
+            customer_info = []
+            customer_info.append((
+                payload["custTpin"],
+                payload["custNm"]
+            ))
 
-            # invoice = []
-            # invoice.append((
-            #     payload["cisInvcNo"],
-            #     self.todays_date(),
+            invoice = []
+            invoice.append((
+                payload["cisInvcNo"],
+                self.todays_date(),
                 
-            # ))
-            # sdc_data = []
-            # sdc_data.append((
+            ))
+            sdc_data = []
+            sdc_data.append((
+                self.todays_date(),
+                self.get_origin_sdc_id(),
+                                
 
-            # ))
+            ))
 
-            # pdf_items = payload["itemList"]
-            # print(customer_info, company_info, invoice, pdf_items)
-            # BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items)
-
-
-            # frappe.throw("Testing PDF")
+            pdf_items = payload["itemList"]
+            print(customer_info, company_info, invoice, pdf_items)
+            BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
             get_rcpt_no = response.get("data", {}).get("rcptNo")
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             print("Stock master updated successfully after sale.")

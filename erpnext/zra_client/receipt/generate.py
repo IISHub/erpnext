@@ -131,43 +131,56 @@ class InvoicePDF:
         left_x, right_x = 1*inch, width/2 + 0.5*inch
         y = start_y
 
+        # SDC Information Section
         c.setFont("Helvetica-Bold", 12)
         c.setFillColor(colors.HexColor("#2c3e50"))
-        c.drawString(left_x, y, "SDC Information")
-        c.setFont("Helvetica", 8)
+        c.drawString(left_x, y, "SDC INFORMATION")
+        c.setFont("Helvetica", 9)
+        
         y_offset = 0.25*inch
         y_curr = y - y_offset
-        c.drawString(left_x, y_curr, f"Invoice Date: {sdc.get('invoice_date', self.invoice_data['invoice']['date'])}")
-        y_curr -= y_offset
-        c.drawString(left_x, y_curr, f"SDC ID: {sdc.get('sdc_id','SDC0010002709')}")
-        y_curr -= y_offset
-        c.drawString(left_x, y_curr, f"Invoice Number: {sdc.get('invoice_number',self.invoice_data['invoice']['number'])}")
-        y_curr -= y_offset
-        c.drawString(left_x, y_curr, f"Invoice Type: {sdc.get('invoice_type','Normal invoice')}")
-        y_curr -= y_offset
-        c.drawString(left_x, y_curr, f"Payment Type: {payment.get('type','Cash')}")
-
-        # Right column - banking
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(right_x, y, "Banking Details")
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(right_x + 60, y - y_offset, "KWACHA")
-        c.drawString(right_x + 180, y - y_offset, "USD")
-        c.setFont("Helvetica", 8)
-        rows = [
-            ("ACC NO","023040000099","0232041000006"),
-            ("BANK","INDO ZAMBIA BANK","INDO ZAMBIA BANK"),
-            ("BRANCH","CROSSROADS","CROSSROADS"),
-            ("BRANCH CODE","90023","90023"),
-            ("SWIFTCODE","INZAZMLX","INZAZMLX")
+        
+        # SDC Details
+        sdc_details = [
+            ("SDC ID:", sdc.get('sdc_id', 'N/A')),
+            ("Invoice Date:", sdc.get('invoice_date', 'N/A')),
+            ("Current Date:", sdc.get('current_date', 'N/A')),
+            ("Invoice Number:", sdc.get('invoice_number', 'N/A')),
+            ("Invoice Type:", sdc.get('invoice_type', 'Normal invoice')),
+            ("Payment Type:", payment.get('type', 'Cash'))
         ]
-        row_y = y - y_offset*2
-        for label, kwacha_val, usd_val in rows:
-            c.drawString(right_x, row_y, label)
-            c.drawString(right_x + 60, row_y, kwacha_val)
-            c.drawString(right_x + 180, row_y, usd_val)
-            row_y -= y_offset
-        return min(y_curr, row_y) - 0.6*inch
+        
+        for label, value in sdc_details:
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(left_x, y_curr, label)
+            c.setFont("Helvetica", 9)
+            c.drawString(left_x + 1.2*inch, y_curr, str(value))
+            y_curr -= y_offset
+
+        # Right column - ZRA Compliance Information
+        c.setFont("Helvetica-Bold", 12)
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.drawString(right_x, y, "ZRA COMPLIANCE")
+        c.setFont("Helvetica", 9)
+        
+        y_curr_right = y - y_offset
+        
+        compliance_info = [
+            ("Tax Authority:", "Zambia Revenue Authority"),
+            ("Compliance Status:", "Valid"),
+            ("SDC Status:", "Active"),
+            ("Tax Category:", "VAT Registered"),
+            ("Fiscal Device:", "Certified SDC")
+        ]
+        
+        for label, value in compliance_info:
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(right_x, y_curr_right, label)
+            c.setFont("Helvetica", 9)
+            c.drawString(right_x + 1.5*inch, y_curr_right, value)
+            y_curr_right -= y_offset
+
+        return min(y_curr, y_curr_right) - 0.6*inch
 
     def draw_qrcode_below_sdc(self, c, width, y_start, gap=0.7*inch):
         qr_data = f"Invoice: {self.invoice_data['invoice']['number']}\nCustomer: {self.invoice_data['customer']['name']}\nTotal: {self.invoice_data['totals']['grand_total']} {self.invoice_data['totals']['currency']}"

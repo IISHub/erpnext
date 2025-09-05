@@ -58,6 +58,9 @@ class ZRAClient:
     def get_tpin(self):
         return self.tpin
 
+    def get_origin_sdc_id(self):
+        return self.org_sdc_id
+
     def get_company_name(self):
         return self.company_name
 
