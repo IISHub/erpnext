@@ -1,43 +1,55 @@
 from erpnext.zra_client.receipt.generate import InvoicePDF
-
 class BuildPdf:
-    def build_invoice(self):
+    def build_invoice(self, company_info, customer_info, invoice, items):
+        # Extract values from the lists/tuples
+        company_name, company_phone, company_email = company_info[0]
+        cust_tpin, cust_name = customer_info[0]
+        invoice_number, invoice_date = invoice[0]
+
+        # Prepare invoice_data dict dynamically
         invoice_data = {
             "company": {
-                "name": "IZYANE INOVSOLUTIONS LIMITED",
-                "tpin": "100200300",
-                "phone": "+260 777 123456",
-                "email": "info@izyane.com"
+                "name": company_name,
+                "phone": company_phone,
+                "email": company_email,
+                # optional TPIN, add if you have a method for it
+                "tpin": getattr(self, "get_company_tpin", lambda: "")()
             },
-            "customer": {"name": "First National Bank Zambia", "tpin": "200300400"},
-            "invoice": {"number": "INV-001", "date": "2025-09-04"},
+            "customer": {
+                "name": cust_name,
+                "tpin": cust_tpin
+            },
+            "invoice": {
+                "number": invoice_number,
+                "date": invoice_date
+            },
             "items": [
-                {"name": "Laptop", "qty": 2, "price": 1200.00, "total": 2400.00, "tax_type": "A"},
-                {"name": "Mouse", "qty": 3, "price": 15.00, "total": 45.00, "tax_type": "B"}
+                {
+                    "name": item["itemNm"],
+                    "qty": item["qty"],
+                    "price": item["prc"],
+                    "total": item["totAmt"],
+                    "tax_type": item.get("vatCatCd", "")
+                }
+                for item in items
             ],
             "totals": {
-                "standard_rated": 862.07,
-                "mtv": 0,
-                "reverse_vat": 0,
-                "subtotal": 862.07,
-                "tax": 137.93,
-                "grand_total": 1000.00,
+                "standard_rated": sum(i.get("vatTaxblAmt", 0) for i in items),
+                "mtv": sum(i.get("mtv", 0) for i in items),
+                "reverse_vat": sum(i.get("tlAmt", 0) for i in items),
+                "subtotal": sum(i.get("splyAmt", 0) for i in items),
+                "tax": sum(i.get("vatAmt", 0) for i in items),
+                "grand_total": sum(i.get("totAmt", 0) for i in items),
                 "currency": "ZMW",
                 "exchange_rate": "1 ZMW = 1.0000 ZMW"
             },
-            "sdc_info": {
-                "invoice_date": "04/09/2025 09:06:53",
-                "sdc_id": "SDC0010002709",
-                "invoice_number": "INV0010002709/856",
-                "invoice_type": "Normal invoice"
-            },
+            # Optional sections
+            "sdc_info": {},
             "payment": {"type": "Cash"},
-            "internal_data": {
-                "value": "USQH-NSZE-GE3P-HDYM-UHFG-BTYR-AE",
-                "receipt_signature": "NB3B-75ZE-KIYU-PSSQ"
-            }
+            "internal_data": {}
         }
 
-        # Save PDF without attaching to any document
+        # Save PDF
         file_doc = InvoicePDF(invoice_data).build_pdf()
-        print("PDF saved with file ID:")
+        print("PDF saved with file ID:", file_doc)
+

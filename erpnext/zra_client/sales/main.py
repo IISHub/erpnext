@@ -425,17 +425,47 @@ class NormaSale(ZRAClient):
 
         print("\n[START] Sending sale data...")
         payload = self.build_payload(items, base_data)
-        # response = self.create_normal_sale_helper(payload)
-        mock_results = mock_zra_response()
-        # response = response.json()
-        response = mock_results
+        response = self.create_normal_sale_helper(payload)
+        # mock_results = mock_zra_response()
+        response = response.json()
+
+        # response = mock_results
+        print(response)
         print(f"Response from ZRA: {response}")
         
         if response.get("resultCd") == "000":
-            BuildPdf().build_invoice()
+
+            # company_info = []
+            # company_info.append((
+            #     self.get_company_name(),
+            #     self.get_company_phone_no(),
+            #     self.get_company_email()
+            # ))
+
+        
+            # customer_info = []
+            # customer_info.append((
+            #     payload["custTpin"],
+            #     payload["custNm"]
+            # ))
+
+            # invoice = []
+            # invoice.append((
+            #     payload["cisInvcNo"],
+            #     self.todays_date(),
+                
+            # ))
+            # sdc_data = []
+            # sdc_data.append((
+
+            # ))
+
+            # pdf_items = payload["itemList"]
+            # print(customer_info, company_info, invoice, pdf_items)
+            # BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items)
 
 
-            frappe.throw("Testing PDF")
+            # frappe.throw("Testing PDF")
             get_rcpt_no = response.get("data", {}).get("rcptNo")
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             print("Stock master updated successfully after sale.")
@@ -453,36 +483,7 @@ class NormaSale(ZRAClient):
                 print("Updating stock items...")
 
                 update_stock_items = []
-                update_stock_master_items = []
-
-                company_info = []
-                company_info.append(
-                    self.get_company_name(),
-                    self.get_company_phone_no(),
-                    self.get_company_email()
-                )
-            
-                customer_info = []
-                customer_info.append(
-                    payload["custTpin"],
-                    payload["custNm"]
-                )
-
-                invoice = []
-                invoice.append(
-                    payload["cisInvcNo"],
-                    self.todays_date(),
-                    
-                )
-                pdf_items = payload["itemList"]
-
-                pdf_totals = []
-                pdf_totals.append(
-
-                )
-
-
-                    
+                update_stock_master_items = []                    
                     
                 for item in self.to_use_data.get("itemList", []):
                     update_stock_items.append({

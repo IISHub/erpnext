@@ -201,24 +201,13 @@ class InvoicePDF:
             pass
 
     def build_pdf(self, site_folder=None, site_name="erpnext.localhost"):
-        import os
-        import uuid
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import A4
-
-        # If no folder specified, default to the current site folder
         if site_folder is None:
-            # Assumes this script runs from sites/erpnext.localhost/
             site_folder = os.path.join(os.getcwd(), "erpnext.localhost")
-
-        # Path to uploads folder inside the site
         output_folder = os.path.join(site_folder, "public", "files", "uploads")
         os.makedirs(output_folder, exist_ok=True)
 
         filename = str(uuid.uuid4()) + ".pdf"
         file_path = os.path.join(output_folder, filename)
-
-        # Create PDF (rest of your code)
         c = canvas.Canvas(file_path, pagesize=A4)
         width, height = A4
         self.add_watermark(c, width, height)

@@ -67,10 +67,9 @@ class ZRAClient:
     def get_company_email(self):
         return self.company_email
 
-    def todays_date():
+    def todays_date(self):
         today = date.today()
-        date = today.strftime("%Y-%m-%d")
-        return date
+        return today.strftime("%Y-%m-%d")
 
     def get_branch_code(self):
         return self.branch_code
