@@ -1,6 +1,6 @@
 import os
 import uuid
-from frappe import get_doc, _  # frappe functions
+from frappe import get_doc, _ 
 from frappe.utils.file_manager import save_file
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -11,11 +11,14 @@ from reportlab.lib.utils import ImageReader
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 from reportlab.graphics import renderPDF
+from erpnext.zra_client.receipt.database import UpdateRecieptUrl
 
+SITE_URL = "http://erp.izyanehub.com:8081/"
 
 class InvoicePDF:
     def __init__(self, invoice_data):
         self.invoice_data = invoice_data
+        self.site_url = SITE_URL
 
     def draw_nav(self, c, width, height):
         logo_path = "logo.png"
@@ -213,14 +216,16 @@ class InvoicePDF:
         except:
             pass
 
-    def build_pdf(self, site_folder=None, site_name="erpnext.localhost"):
+    def build_pdf(self, invoice_name, site_folder=None, site_name="erpnext.localhost"):
         if site_folder is None:
-            site_folder = os.path.join(os.getcwd(), "erpnext.localhost")
+            site_folder = os.path.join(os.getcwd(), site_name)
+
         output_folder = os.path.join(site_folder, "public", "files", "uploads")
         os.makedirs(output_folder, exist_ok=True)
 
         filename = str(uuid.uuid4()) + ".pdf"
         file_path = os.path.join(output_folder, filename)
+
         c = canvas.Canvas(file_path, pagesize=A4)
         width, height = A4
         self.add_watermark(c, width, height)
@@ -235,8 +240,9 @@ class InvoicePDF:
         c.showPage()
         c.save()
 
-        public_url = f"http://{site_name}/files/uploads/{filename}"
+        public_url = f"{self.site_url}files/uploads/{filename}"
         print(f"PDF saved at: {file_path}")
         print(f"Accessible URL: {public_url}")
-        return public_url
 
+        updater = UpdateRecieptUrl()
+        return updater.update_invoice(invoice_name, public_url)
