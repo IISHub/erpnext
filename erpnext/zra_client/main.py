@@ -412,30 +412,47 @@ class ZRAClient:
 
         threading.Thread(target=task).start()
     
-    def update_rcptNo_delayed(self, docname, rcpt_no, qrcode_url,delay=10):
+    def update_rcptNo_delayed(self, docname, rcpt_no, delay=10, site="erpnext.localhost"):
+        print(f"Scheduling update for Sales Invoice '{docname}' with rcptNo '{rcpt_no}' after {delay} seconds on site '{site}'.")
+
         def worker():
+            frappe.init(site=site)
+            frappe.connect()
+            frappe.set_user("Administrator")
+
             try:
-                print(f"Received rcptNo: {rcpt_no}. Waiting {delay} seconds before updating...")
+                print(f"Waiting {delay} seconds before updating Sales Invoice '{docname}'...")
                 time.sleep(delay)
 
-                url = "http://0.0.0.0:7000/api/update_rcpt/" 
-                payload = { 
-                    "docname": docname,
-                    "rcpt_no": rcpt_no,
-                    "qrcode_url": qrcode_url
-                }
-                headers = {'Content-Type': 'application/json'}
-                response = requests.post(url, json=payload, headers=headers)
+                if not frappe.db.exists("Sales Invoice", docname):
+                    print(f"Sales Invoice '{docname}' not found.")
+                    return
+                frappe.db.set_value("Sales Invoice", docname, "custom_rcpt_no", rcpt_no)
+                frappe.db.commit()
 
-                if response.status_code == 200:
-                    print(f"rcptNo '{rcpt_no}' updated for {docname} via API")
-                else:
-                    print(f"Failed to update rcptNo via API: {response.text}")
+                print(f"custom_rcpt_no '{rcpt_no}' updated for Sales Invoice '{docname}'.")
 
             except Exception as e:
-                print(f" Error calling API to update rcptNo: {e}")
+                print(f"Error updating custom_rcpt_no for '{docname}': {e}")
+
+            finally:
+                frappe.destroy()
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def fetch_original_invoice(self, original_invoice_no):
+        if not frappe.db.exists("Sales Invoice", original_invoice_no):
+            print("Not found")
+            frappe.throw(f"Sales Invoice {original_invoice_no} not found")
+        
+        original_invoice = frappe.get_doc("Sales Invoice", original_invoice_no)
+        orgInvcNo = getattr(original_invoice, 'custom_rcpt_no', None)
+        if not orgInvcNo:
+            print("Original invoice receipt number not found")
+            frappe.throw("Original invoice receipt number not found")
+        
+        return orgInvcNo
+
     
     def run_stock_update_in_background(self, update_stock_payload, update_stock_master_items, created_by):
         def background_task():

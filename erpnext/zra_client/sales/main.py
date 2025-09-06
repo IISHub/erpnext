@@ -453,6 +453,7 @@ class NormaSale(ZRAClient):
             invoice.append((
                 payload["cisInvcNo"],
                 self.todays_date(),
+                "TAX INVOICE"
                 
             ))
             sdc_data = []
@@ -470,7 +471,7 @@ class NormaSale(ZRAClient):
             get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             print("Stock master updated successfully after sale.")
             doc_name = sell_data.get("name")
-            self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no, qrcode_url=get_qrcode_url)
+            self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
             created_by = sell_data.get("owner")
 
             print("This prints immediately, before delayed print")
@@ -567,8 +568,7 @@ class NormaSale(ZRAClient):
 
 
 class CreditNote(ZRAClient):
-        
-        
+
         def __init__(self):
             self.taxbl_totals = {key: 0.0 for key in self.TAX_RATES}
             self.tax_amt_totals = {key: 0.0 for key in self.TAX_RATES}
@@ -711,13 +711,8 @@ class CreditNote(ZRAClient):
             total_tax_amount = sum(self.tax_amt_totals.values())
             total_amount = round(total_taxable_amount + total_tax_amount, 2)
             original_invoice_no = base_data["original_sell"]
-            try:
-                original_invoice = frappe.get_doc("Sales Invoice", original_invoice_no)
-                orgInvcNo = original_invoice.custom_rcpt_no if hasattr(original_invoice, 'custom_rcpt_no') else None
-                if not orgInvcNo:
-                    frappe.throw("Original invoice receipt number not found")
-            except Exception as e:
-                frappe.throw(f"Failed to get original invoice: {str(e)}")
+
+            orgInvcNo = self.fetch_original_invoice(original_invoice_no)
 
             export_destination_country_code = base_data.get("export_destination_code")
             if export_destination_country_code is not None:
@@ -732,7 +727,7 @@ class CreditNote(ZRAClient):
                 "bhfId": self.get_branch_code(),
                 "orgInvcNo":  orgInvcNo,
                 "orgSdcId": "SDC0010002709",
-                "cisInvcNo": self.generate_cis_invc_no(),
+                "cisInvcNo": base_data["name"],
                 "custTpin": base_data["cust_tpin"],
                 "custNm": base_data["cust_name"],
                 "salesTyCd": "N",
@@ -788,6 +783,7 @@ class CreditNote(ZRAClient):
         
         def send_credit_sale_data(self, sell_data):
             print(sell_data)
+            name = sell_data.get("name")
             customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
             customer_doc = frappe.get_doc("Customer", customer_name)
             customer_tpin = customer_doc.get("custom_tpin") or ""
@@ -901,6 +897,7 @@ class CreditNote(ZRAClient):
                 })
 
             base_data = {
+                "name": name,
                 "cust_name": customer_name,
                 "cust_tpin": customer_tpin,
                 "original_sell": original_sell,
@@ -941,11 +938,44 @@ class CreditNote(ZRAClient):
             response = response.json()
 
             if response.get("resultCd") == "000":
+
+                company_info = []
+                company_info.append((
+                    self.get_company_name(),
+                    self.get_company_phone_no(),
+                    self.get_company_email()
+                ))
+
+            
+                customer_info = []
+                customer_info.append((
+                    payload["custTpin"],
+                    payload["custNm"]
+                ))
+
+                invoice = []
+                invoice.append((
+                    payload["cisInvcNo"],
+                    self.todays_date(),
+                    "CREDIT NOTE" 
+                    
+                ))
+                sdc_data = []
+                sdc_data.append((
+                    self.todays_date(),
+                    self.get_origin_sdc_id(),
+                                    
+
+                ))
+
+                pdf_items = payload["itemList"]
+                print(customer_info, company_info, invoice, pdf_items)
+                BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
                 get_rcpt_no = response.get("data", {}).get("rcptNo")
                 get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                 print("Stock master updated successfully after sale.")
                 doc_name = sell_data.get("name")
-                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no, qrcode_url=get_qrcode_url)
+                self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
                 created_by = sell_data.get("owner")
 
                 print("This prints immediately, before delayed print")
@@ -1193,7 +1223,7 @@ class DebitNote(ZRAClient):
                     "bhfId": self.get_branch_code(),
                     "orgInvcNo":  orgInvcNo,
                     "orgSdcId": "SDC0010002709",
-                    "cisInvcNo": self.generate_cis_invc_no(),
+                    "cisInvcNo": base_data["name"],
                     "custTpin": base_data["cust_tpin"],
                     "custNm": base_data["cust_name"],
                     "salesTyCd": "N",
@@ -1247,6 +1277,7 @@ class DebitNote(ZRAClient):
                 }
             
             def send_debit_sale_data(self, sell_data):
+                name = sell_data.get("name")
                 customer_name = sell_data.get("customer") or sell_data.get("customer_name") or ""
                 customer_doc = frappe.get_doc("Customer", customer_name)
                 customer_tpin = customer_doc.get("custom_tpin") or ""
@@ -1372,6 +1403,7 @@ class DebitNote(ZRAClient):
                     })
 
                 base_data = {
+                    "name":name,
                     "cust_name": customer_name,
                     "cust_tpin": customer_tpin,
                     "original_sell": original_sell,
@@ -1413,11 +1445,44 @@ class DebitNote(ZRAClient):
                 response = response.json()
                 
                 if response.get("resultCd") == "000":
+
+                    company_info = []
+                    company_info.append((
+                        self.get_company_name(),
+                        self.get_company_phone_no(),
+                        self.get_company_email()
+                    ))
+
+                
+                    customer_info = []
+                    customer_info.append((
+                        payload["custTpin"],
+                        payload["custNm"]
+                    ))
+
+                    invoice = []
+                    invoice.append((
+                        payload["cisInvcNo"],
+                        self.todays_date(),
+                        "DEBIT NOTE" 
+                        
+                    ))
+                    sdc_data = []
+                    sdc_data.append((
+                        self.todays_date(),
+                        self.get_origin_sdc_id(),
+                                        
+
+                    ))
+
+                    pdf_items = payload["itemList"]
+                    print(customer_info, company_info, invoice, pdf_items)
+                    BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
                     get_rcpt_no = response.get("data", {}).get("rcptNo")
                     get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                     print("Stock master updated successfully after sale.")
                     doc_name = sell_data.get("name")
-                    self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no, qrcode_url=get_qrcode_url)
+                    self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
                     created_by = sell_data.get("owner")
 
                     print("This prints immediately, before delayed print")

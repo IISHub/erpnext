@@ -4,7 +4,7 @@ class BuildPdf:
     def build_invoice(self, company_info, customer_info, invoice, items, sdc_data):
         company_name, company_phone, company_email = company_info[0]
         cust_tpin, cust_name = customer_info[0]
-        invoice_number, invoice_date = invoice[0]
+        invoice_number, invoice_date, invoice_type = invoice[0]
         current_date, sdc_id = sdc_data[0]
 
         invoice_data = {
@@ -20,7 +20,8 @@ class BuildPdf:
             },
             "invoice": {
                 "number": invoice_number,
-                "date": invoice_date
+                "date": invoice_date,
+                "type": invoice_type  
             },
             "items": [
                 {
