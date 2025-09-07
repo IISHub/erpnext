@@ -265,7 +265,7 @@ class SalesInvoice(SellingController):
 
 	def autoname(self):
 		random_number = random.randint(1000, 9999)
-		self.name = f"SALE-INVOICE{now_datetime().strftime('%Y%m%d%H%M%S')}-{random_number}"
+		self.name = f"{random_number}"
 
 	def set_indicator(self):
 		"""Set indicator for portal"""

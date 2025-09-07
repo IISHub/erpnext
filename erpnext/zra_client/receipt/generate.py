@@ -87,28 +87,61 @@ class InvoicePDF:
         table.wrapOn(c, width, start_y)
         table.drawOn(c, 1*inch, start_y - len(data)*0.28*inch)
         return start_y - (len(data)+1)*0.28*inch
-
+    
     def draw_totals(self, c, width, start_y):
-        totals = self.invoice_data.get("totals", {})
-        currency = totals.get("currency","ZMW")
-        c.setFont("Helvetica-Bold",10)
+        totals = self.invoice_data["totals"]
+        tax_details = self.invoice_data["tax_details"]
+        currency = totals.get("currency", "ZMW")
+
+        c.setFont("Helvetica-Bold", 10)
         y = start_y
-        lines = [
-            ("Taxable Standard Rated - A (16%)", totals.get("standard_rated",0)),
-            ("Taxable MTV - B (16%)", totals.get("mtv",0)),
-            ("Taxable Reverse VAT - RVAT (16%)", totals.get("reverse_vat",0)),
-            ("", ""),
-            ("Sub-total", totals.get("subtotal",0)),
-            ("VAT (16%)", totals.get("tax",0)),
-            ("Total Amount", totals.get("grand_total",0))
+
+        tax_categories = [
+            ("A", "Taxable Standard Rated"),
+            ("B", "Taxable MTV"),
+            ("C1", "Taxable C1"),
+            ("C2", "Taxable C2"),
+            ("C3", "Taxable C3"),
+            ("D", "Taxable D"),
+            ("E", "Taxable E"),
+            ("F", "Taxable F"),
+            ("Ipl1", "Taxable Import Level 1"),
+            ("Ipl2", "Taxable Import Level 2"),
+            ("Tl", "Tourism Levy"),
+            ("Ecm", "Electronic Commerce"),
+            ("Exeeg", "Exempt EG"),
+            ("Rvat", "Reverse VAT"),
         ]
-        start_x, value_x = width/2, width - 0.5*inch
+
+        start_x, value_x = width / 2, width - 0.5 * inch
+
+        for code, label in tax_categories:
+            tax_info = tax_details.get(code, {})
+            tax_base = tax_info.get("base", 0)
+            tax_amt = tax_info.get("tax", 0)
+            tax_rate = tax_info.get("rate", 0)
+
+            if tax_base or tax_amt: 
+                display_label = f"{label} ({tax_rate}%)"
+                c.drawString(start_x, y, display_label)
+                c.drawRightString(value_x, y, f"{tax_base:,.2f} {currency}")
+                y -= 0.25 * inch
+
+        lines = [
+            ("Sub-total", totals.get("subtotal", 0)),
+            ("VAT Total", totals.get("tax", 0)),
+            ("Total Amount", totals.get("grand_total", 0)),
+        ]
+
         for label, value in lines:
-            if label and isinstance(value,(int,float)):
-                c.drawString(start_x, y, label)
-                c.drawRightString(value_x, y, f"{value:,.2f} {currency}")
-            y -= 0.25*inch
-        return y - 0.2*inch
+            c.drawString(start_x, y, label)
+            c.drawRightString(value_x, y, f"{value:,.2f} {currency}")
+            y -= 0.25 * inch
+
+        return y - 0.2 * inch
+
+
+
 
     def draw_sdc_info(self, c, width, start_y):
         sdc = self.invoice_data.get("sdc_info",{})
@@ -149,16 +182,20 @@ class InvoicePDF:
         return min(y_curr,row_y) - 0.6*inch
 
     def draw_qrcode_below_sdc(self, c, width, y_start, gap=0.7*inch):
-        qr_data = f"Invoice: {self.invoice_data['invoice']['number']}\nCustomer: {self.invoice_data['customer']['name']}\nTotal: {self.invoice_data['totals']['grand_total']} {self.invoice_data['totals']['currency']}"
+        qr_data = self.invoice_data['invoice'].get('qrcode', '')
+
         qr_code = qr.QrCodeWidget(qr_data)
         bounds = qr_code.getBounds()
         size = 1*inch
-        scale_x = size / (bounds[2]-bounds[0])
-        scale_y = size / (bounds[3]-bounds[1])
-        d = Drawing(size,size,transform=[scale_x,0,0,scale_y,0,0])
+        scale_x = size / (bounds[2] - bounds[0])
+        scale_y = size / (bounds[3] - bounds[1])
+
+        d = Drawing(size, size, transform=[scale_x, 0, 0, scale_y, 0, 0])
         d.add(qr_code)
-        x = (width - size)/2
+
+        x = (width - size) / 2
         y = y_start - gap
+
         renderPDF.draw(d, c, x, y)
 
     def draw_footer(self, c, width):

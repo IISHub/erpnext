@@ -1,7 +1,7 @@
-from erpnext.zra_client.receipt.build import BuildPdf
 from erpnext.zra_client.retry.main import RETRYABLE_ERRORS, ResponseRetry
 from erpnext.zra_client.main import RequestException, ZRAClient
 from erpnext.zra_client.purchase.main import mock_zra_response
+from erpnext.zra_client.receipt.build import BuildPdf
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import requests
@@ -9,8 +9,6 @@ import frappe
 import random
 import json
 import os
-
-
 
 
 class NormaSale(ZRAClient):
@@ -449,26 +447,28 @@ class NormaSale(ZRAClient):
                 payload["custNm"]
             ))
 
+            get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
             invoice = []
             invoice.append((
                 payload["cisInvcNo"],
                 self.todays_date(),
-                "TAX INVOICE"
+                "TAX INVOICE",
+                get_qrcode_url
                 
             ))
             sdc_data = []
             sdc_data.append((
                 self.todays_date(),
                 self.get_origin_sdc_id(),
-                                
-
             ))
 
             pdf_items = payload["itemList"]
             print(customer_info, company_info, invoice, pdf_items)
-            BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
+            pdf_generator = BuildPdf()
+            pdf_generator.build_invoice(company_info, customer_info, invoice, pdf_items, sdc_data, payload)
+
             get_rcpt_no = response.get("data", {}).get("rcptNo")
-            get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
+            
             print("Stock master updated successfully after sale.")
             doc_name = sell_data.get("name")
             self.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
@@ -543,9 +543,6 @@ class NormaSale(ZRAClient):
 
                 print(update_stock_payload, update_stock_master_items)
                 self.run_stock_update_in_background(update_stock_payload, update_stock_master_payload, created_by)
-                BuildPdf.build_invoice()
-
-                frappe.throw("Testing PDF")
 
                 
         elif response.get("resultCd") in RETRYABLE_ERRORS:
@@ -953,11 +950,13 @@ class CreditNote(ZRAClient):
                     payload["custNm"]
                 ))
 
+                get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                 invoice = []
                 invoice.append((
                     payload["cisInvcNo"],
                     self.todays_date(),
-                    "CREDIT NOTE" 
+                    "CREDIT NOTE",
+                    get_qrcode_url
                     
                 ))
                 sdc_data = []
@@ -970,7 +969,7 @@ class CreditNote(ZRAClient):
 
                 pdf_items = payload["itemList"]
                 print(customer_info, company_info, invoice, pdf_items)
-                BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
+                BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data, payload)
                 get_rcpt_no = response.get("data", {}).get("rcptNo")
                 get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                 print("Stock master updated successfully after sale.")
@@ -1460,11 +1459,13 @@ class DebitNote(ZRAClient):
                         payload["custNm"]
                     ))
 
+                    get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                     invoice = []
                     invoice.append((
                         payload["cisInvcNo"],
                         self.todays_date(),
-                        "DEBIT NOTE" 
+                        "DEBIT NOTE",
+                        get_qrcode_url
                         
                     ))
                     sdc_data = []
@@ -1477,7 +1478,7 @@ class DebitNote(ZRAClient):
 
                     pdf_items = payload["itemList"]
                     print(customer_info, company_info, invoice, pdf_items)
-                    BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data)
+                    BuildPdf().build_invoice(company_info, customer_info, invoice, pdf_items,  sdc_data, payload)
                     get_rcpt_no = response.get("data", {}).get("rcptNo")
                     get_qrcode_url = response.get("data", {}).get("qrCodeUrl") 
                     print("Stock master updated successfully after sale.")
