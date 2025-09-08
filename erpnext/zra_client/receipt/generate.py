@@ -223,7 +223,9 @@ class InvoicePDF:
 
         filename = str(uuid.uuid4()) + ".pdf"
         file_path = os.path.join(output_folder, filename)
+        public_url = f"{self.site_url}files/uploads/{filename}"
 
+        self.invoice_data['invoice']['qrcode'] = public_url
         c = canvas.Canvas(file_path, pagesize=A4)
         width, height = A4
         self.add_watermark(c, width, height)
@@ -233,12 +235,13 @@ class InvoicePDF:
         totals_y = self.draw_items_table(c, width, hero_y)
         sdc_y = self.draw_totals(c, width, totals_y)
         footer_y = self.draw_sdc_info(c, width, sdc_y)
+
         self.draw_qrcode_below_sdc(c, width, footer_y)
+
         self.draw_footer(c, width)
         c.showPage()
         c.save()
 
-        public_url = f"{self.site_url}files/uploads/{filename}"
         print(f"PDF saved at: {file_path}")
         print(f"Accessible URL: {public_url}")
 

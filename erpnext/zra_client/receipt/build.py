@@ -3,7 +3,7 @@ from datetime import datetime
 
 class BuildPdf:
     def build_invoice(self, company_info, customer_info, invoice, items, sdc_data, payload):
-        company_name, company_phone, company_email = company_info[0]
+        company_name, company_phone, company_email, company_tpin = company_info[0]
         cust_tpin, cust_name = customer_info[0]
         invoice_number, invoice_date, invoice_type, get_qrcode_url = invoice[0]
         current_date, sdc_id = sdc_data[0]
@@ -13,7 +13,7 @@ class BuildPdf:
                 "name": company_name,
                 "phone": company_phone,
                 "email": company_email,
-                "tpin": getattr(self, "get_company_tpin", lambda: "")()
+                "tpin": company_tpin,
             },
             "customer": {
                 "name": cust_name,

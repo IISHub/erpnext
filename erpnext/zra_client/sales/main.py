@@ -437,7 +437,8 @@ class NormaSale(ZRAClient):
             company_info.append((
                 self.get_company_name(),
                 self.get_company_phone_no(),
-                self.get_company_email()
+                self.get_company_email(),
+                self.get_tpin(),
             ))
 
         
