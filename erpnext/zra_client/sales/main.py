@@ -175,6 +175,8 @@ class NormaSale(ZRAClient):
         get_lpoNumber = base_data.get("lpoNumber")
         get_principal_id = base_data.get("principalId")
 
+        logged_in_user = self.get_logged_in_details(base_data["created_by"])
+        username = logged_in_user['username']
 
         payload = {
             "tpin": self.get_tpin(),
@@ -198,10 +200,10 @@ class NormaSale(ZRAClient):
             "totAmt": total_amount,
             "prchrAcptcYn": "N",
             "remark": "",
-            "regrId": base_data["created_by"],
-            "regrNm": base_data["created_by"],
-            "modrId": base_data["created_by"],
-            "modrNm": base_data["created_by"],
+            "regrId": username,
+            "regrNm": username,
+            "modrId": username,
+            "modrNm": username,
             "saleCtyCd": "1",
             "currencyTyCd": base_data["currencyCd"],
             "exchangeRt": base_data["exchangeRt"],
@@ -525,20 +527,20 @@ class NormaSale(ZRAClient):
                     "totTaxblAmt": self.to_use_data['totTaxblAmt'],
                     "totTaxAmt": self.to_use_data['totTaxAmt'],
                     "totAmt": self.to_use_data['totAmt'],
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
+                    "regrId": self.to_use_data["regrId"],
+                    "regrNm": self.to_use_data["regrId"],
+                    "modrNm": self.to_use_data["regrId"],
+                    "modrId": self.to_use_data["regrId"],
                     "itemList": update_stock_items
                 }
 
                 update_stock_master_payload = {
                     "tpin": self.tpin,
                     "bhfId": self.get_branch_code(),
-                    "regrId": created_by,
-                    "regrNm": created_by,
-                    "modrNm": created_by,
-                    "modrId": created_by,
+                    "regrId": self.to_use_data["regrId"],
+                    "regrNm": self.to_use_data["regrId"],
+                    "modrNm": self.to_use_data["regrId"],
+                    "modrId": self.to_use_data["regrId"],
                     "stockItemList": update_stock_master_items 
                     }
 
@@ -719,6 +721,9 @@ class CreditNote(ZRAClient):
                 destnCountryCd = None
             
             get_lpoNumber = base_data.get("lpoNumber")
+            logged_in_user = self.get_logged_in_details(base_data["created_by"])
+            username = logged_in_user['username']
+
 
             payload = {
                 "tpin": self.get_tpin(),
@@ -743,10 +748,10 @@ class CreditNote(ZRAClient):
                 "totAmt": total_amount,
                 "prchrAcptcYn": "N",
                 "remark": "",
-                "regrId": base_data["created_by"],
-                "regrNm": base_data["created_by"],
-                "modrId": base_data["created_by"],
-                "modrNm": base_data["created_by"],
+                "regrId": username,
+                "regrNm": username,
+                "modrId": username,
+                "modrNm": username,
                 "saleCtyCd": "1",
                 "lpoNumber": None,
                 "currencyTyCd": base_data["currencyCd"],
@@ -941,7 +946,8 @@ class CreditNote(ZRAClient):
                 company_info.append((
                     self.get_company_name(),
                     self.get_company_phone_no(),
-                    self.get_company_email()
+                    self.get_company_email(),
+                    self.get_tpin()
                 ))
 
             
@@ -1026,20 +1032,20 @@ class CreditNote(ZRAClient):
                         "totTaxblAmt": self.to_use_data['totTaxblAmt'],
                         "totTaxAmt": self.to_use_data['totTaxAmt'],
                         "totAmt": self.to_use_data['totAmt'],
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
+                        "regrId": self.to_use_data["regrId"],
+                        "regrNm": self.to_use_data["regrId"],
+                        "modrNm": self.to_use_data["regrId"],
+                        "modrId": self.to_use_data["regrId"],
                         "itemList": update_stock_items
                     }
 
                     update_stock_master_payload = {
                         "tpin": self.tpin,
                         "bhfId": self.get_branch_code(),
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
+                        "regrId": self.to_use_data["regrId"],
+                        "regrNm": self.to_use_data["regrId"],
+                        "modrNm": self.to_use_data["regrId"],
+                        "modrId": self.to_use_data["regrId"],
                         "stockItemList": update_stock_master_items 
                         }
                     
@@ -1217,6 +1223,8 @@ class DebitNote(ZRAClient):
                     destnCountryCd = None
                 
                 get_lpoNumber = base_data.get("lpoNumber")
+                logged_in_user = self.get_logged_in_details(base_data["created_by"])
+                username = logged_in_user['username']
 
                 payload = {
                     "tpin": self.get_tpin(),
@@ -1241,10 +1249,10 @@ class DebitNote(ZRAClient):
                     "totAmt": total_amount,
                     "prchrAcptcYn": "N",
                     "remark": "",
-                    "regrId": base_data["created_by"],
-                    "regrNm": base_data["created_by"],
-                    "modrId": base_data["created_by"],
-                    "modrNm": base_data["created_by"],
+                    "regrId": username,
+                    "regrNm": username,
+                    "modrId": username,
+                    "modrNm": username,
                     "saleCtyCd": "1",
                     "lpoNumber": None,
                     "currencyTyCd": base_data["currencyCd"],
@@ -1450,7 +1458,8 @@ class DebitNote(ZRAClient):
                     company_info.append((
                         self.get_company_name(),
                         self.get_company_phone_no(),
-                        self.get_company_email()
+                        self.get_company_email(),
+                        self.get_tpin(),
                     ))
 
                 
@@ -1534,19 +1543,19 @@ class DebitNote(ZRAClient):
                         "totTaxblAmt": self.to_use_data['totTaxblAmt'],
                         "totTaxAmt": self.to_use_data['totTaxAmt'],
                         "totAmt": self.to_use_data['totAmt'],
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
+                        "regrId": self.to_use_data["regrId"],
+                        "regrNm": self.to_use_data["regrId"],
+                        "modrNm": self.to_use_data["regrId"],
+                        "modrId": self.to_use_data["regrId"],
                         "itemList": update_stock_items
                     }
                     update_stock_master_payload = {
                         "tpin": self.tpin,
                         "bhfId": self.get_branch_code(),
-                        "regrId": created_by,
-                        "regrNm": created_by,
-                        "modrNm": created_by,
-                        "modrId": created_by,
+                        "regrId": self.to_use_data["regrId"],
+                        "regrNm": self.to_use_data["regrId"],
+                        "modrNm": self.to_use_data["regrId"],
+                        "modrId": self.to_use_data["regrId"],
                         "stockItemList": update_stock_master_items 
                         }
 

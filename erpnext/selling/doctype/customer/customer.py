@@ -185,7 +185,10 @@ class Customer(TransactionBase):
 		if frappe.db.exists("Customer", {"custom_tpin": tpin}):
 			frappe.throw(_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin)))
 
+		
 		zra_client = ZRAClient()
+		logged_in_user = zra_client.get_logged_in_details(created_by)
+		username = logged_in_user['username']
 		payload = {
             "tpin": zra_client.get_tpin(),
             "bhfId": zra_client.get_branch_code(),
@@ -197,15 +200,17 @@ class Customer(TransactionBase):
             "faxNo": None,
             "useYn": "Y",
             "remark": None,
-            "regrNm": created_by,
-            "regrId": created_by,
-            "modrNm": created_by,
-            "modrId": created_by
+            "regrNm": username,
+            "regrId": username,
+            "modrNm": username,
+            "modrId": username
         }
 		result = zra_client.create_customer(payload)
+		print(result)
 		# mock_results = mock_zra_response()
 		try:
 			data = result.json()
+			print(data)
 			# data = mock_results
 			if data.get("resultCd") == "000":
 				frappe.msgprint("Customer has been saved successfully.")

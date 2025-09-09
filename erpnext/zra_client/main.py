@@ -485,6 +485,19 @@ class ZRAClient:
 
         return result[0][0] or 0
 
+    def get_logged_in_details(self, email):
+        result = frappe.db.sql("""
+            SELECT name, first_name, last_name, email, username, enabled
+            FROM `tabUser`
+            WHERE email = %s
+        """, email, as_dict=True)
+        
+        if result:
+            return result[0] 
+        else:
+            return None
+
+
     def create_item_zra(self, payload):
         def call_create_item():    
                 response = requests.post(url=self.create_item_url, json=payload, timeout=300)

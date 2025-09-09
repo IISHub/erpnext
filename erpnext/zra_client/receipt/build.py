@@ -69,7 +69,7 @@ class BuildPdf:
                 "invoice_type": "Normal invoice",
                 "current_date": current_date
             },
-            "payment": {"type": "Cash"},
+            "payment": {"type": "Bank transfer"},
             "internal_data": {}
         }
 

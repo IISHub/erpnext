@@ -1255,19 +1255,16 @@ function toggle_custom_rate(frm) {
         return;
     }
 
-    const APIKEY = "b4340d6901-a8ce97c5a1-t0tpx8";
-    const url = `https://api.beta.fastforex.io/fetch-one?from=${fromCurrency}&to=${toCurrency}`;
+    const API_KEY = "ad4b2d8613c9436ea8d826d5917f41c7";
+    const url = `https://openexchangerates.org/api/latest.json?app_id=${API_KEY}`;
 
-    fetch(url, {
-        method: "GET",
-        headers: {
-            "X-API-Key": APIKEY
-        }
-    })
+    fetch(url)
     .then(response => response.json())
     .then(data => {
-        if (data && data.result && data.result[toCurrency]) {
-            frm.set_value('custom_rate', data.result[toCurrency], null, {silent: true});
+        if (data && data.rates && data.rates[toCurrency] && data.rates[fromCurrency]) {
+            // Convert from ZMW to target currency and round to 4 digits
+            const rate = (data.rates[toCurrency] / data.rates[fromCurrency]).toFixed(4);
+            frm.set_value('custom_rate', rate, null, {silent: true});
         } else {
             frappe.msgprint(`Exchange rate retrieval failed. Ensure you have a stable network connection.`);
             frm.set_value('custom_rate', '', null, {silent: true});
@@ -1278,6 +1275,7 @@ function toggle_custom_rate(frm) {
         frm.set_value('custom_rate', '', null, {silent: true});
     });
 }
+
 
 frappe.ui.form.on("Sales Invoice", {
     before_submit(frm) {

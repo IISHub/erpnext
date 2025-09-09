@@ -317,6 +317,8 @@ class Item(Document):
 			frappe.throw("Invalid standard_rate value. Must be a number.")
 
 		created_by = item_data.get("owner", "System")
+		logged_in_user = zra_obj.get_logged_in_details(created_by)
+		username = logged_in_user['username']
 
 		payload = {
 			"tpin": zra_obj.get_tpin(),
@@ -342,14 +344,14 @@ class Item(Document):
 			"sftyQty": opening_stock,
 			"isrcAplcbYn": "N",
 			"useYn": "Y",
-			"regrNm": created_by,
-			"regrId": created_by,
-			"modrNm": created_by,
-			"modrId": created_by
+			"regrNm": username,
+			"regrId": username,
+			"modrNm": username,
+			"modrId": username
 		}
 
 		print("Payload being sent:", json.dumps(payload, indent=2))
-		zra_obj = zraItem()
+	
 		response = zra_obj.create_item_zra(payload)
 		# mock_results = mock_zra_response()
 

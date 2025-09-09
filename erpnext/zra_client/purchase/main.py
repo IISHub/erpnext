@@ -70,7 +70,9 @@ class zraPurchase(ZRAClient):
                 "exciseTxAmt": float(item.get("excise_tx_amt")),
                 "totAmt": float(item.get("tot_amt")),
             })
-
+        
+        logged_in_user = self.get_logged_in_details(modified_by)
+        username = logged_in_user['username']
         payload = {
             "tpin": self.get_tpin_number(),
             "bhfId": self.get_branch_code(),
@@ -89,10 +91,10 @@ class zraPurchase(ZRAClient):
             "totTaxAmt": float(data.get("tot_tax_amt")),
             "totAmt": float(data.get("tot_amt")),
             "remark": data.get("remark") or "Purchase import",
-            "regrNm": modified_by,
-            "regrId": modified_by,
-            "modrNm": modified_by,
-            "modrId": modified_by,
+            "regrNm": username,
+            "regrId": username,
+            "modrNm": username,
+            "modrId": username,
             "itemList": item_list
         }
 
@@ -145,7 +147,7 @@ class zraPurchase(ZRAClient):
                     "totTaxblAmt": payload["totTaxblAmt"],
                     "totTaxAmt": payload["totTaxAmt"],
                     "totAmt": payload["totAmt"],
-                    "regrId": modified_by,
+                    "regrId": payload["regrId"],
                     "regrNm": modified_by,
                     "modrNm": modified_by,
                     "modrId": modified_by,
@@ -277,6 +279,8 @@ class zraPurchase(ZRAClient):
 
             item_seq += 1
 
+        logged_in_user = self.get_logged_in_details(modified_by)
+        username = logged_in_user['username']
         payload = {
             "tpin": self.get_tpin_number(),
             "bhfId": self.get_branch_code(),
@@ -298,10 +302,10 @@ class zraPurchase(ZRAClient):
             "totTaxAmt": round(sum(i["taxAmt"] for i in formatted_items), 2),
             "totAmt": round(sum(i["totAmt"] for i in formatted_items), 2),
             "remark": remarks,
-            "regrNm": modified_by,
-            "regrId": modified_by,
-            "modrNm": modified_by,
-            "modrId": modified_by,
+            "regrNm": username,
+            "regrId": username,
+            "modrNm": username,
+            "modrId": username,
             "itemList": formatted_items
         }
 
@@ -373,20 +377,20 @@ class zraPurchase(ZRAClient):
             "totTaxblAmt": self.to_use_data['totTaxblAmt'],
             "totTaxAmt": self.to_use_data['totTaxAmt'],
             "totAmt": self.to_use_data['totAmt'],
-            "regrId": modified_by,
-            "regrNm": modified_by,
-            "modrNm": modified_by,
-            "modrId": modified_by,
+            "regrId": self.to_use_data["regrId"],
+            "regrNm": self.to_use_data["regrId"],
+            "modrNm": self.to_use_data["regrId"],
+            "modrId": self.to_use_data["regrId"],
             "itemList": update_stock_items
         }
 
         update_stock_master_payload = {
             "tpin": self.get_tpin_number(),
             "bhfId": self.get_branch_code(),
-            "regrId": modified_by,
-            "regrNm": modified_by,
-            "modrNm": modified_by,
-            "modrId": modified_by,
+            "regrId": self.to_use_data["regrId"],
+            "regrNm": self.to_use_data["regrId"],
+            "modrNm": self.to_use_data["regrId"],
+            "modrId": self.to_use_data["regrId"],
             "stockItemList": update_stock_master_items
         }
 

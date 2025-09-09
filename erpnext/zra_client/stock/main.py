@@ -27,6 +27,8 @@ class Stock(ZRAClient):
         total_tax = 0
         total_amount = 0
         ocrnDt = datetime.now().strftime("%Y%m%d")
+        logged_in_user = self.get_logged_in_details(created_by)
+        username = logged_in_user['username']
 
         stock_master_item = []
         payload = {
@@ -42,10 +44,10 @@ class Stock(ZRAClient):
             "ocrnDt": ocrnDt,
             "totItemCnt": len(items),
             "remark": stock_data.get("remarks"),
-            "regrId": created_by,
-            "regrNm": created_by,
-            "modrNm": created_by,
-            "modrId": created_by,
+            "regrId": username,
+            "regrNm": username,
+            "modrNm": username,
+            "modrId": username,
             "itemList": []
         }
 
@@ -138,11 +140,11 @@ class Stock(ZRAClient):
 
         update_stock_master_payload = {
             "tpin": payload.get("tpin"),
-            "regrId": created_by,
-            "regrNm": created_by,
+            "regrId": payload["bhfId"],
+            "regrNm": payload["bhfId"],
             "bhfId": payload["bhfId"],
-            "modrId": created_by,
-            "modrNm": created_by,
+            "modrId": payload["modrId"],
+            "modrNm": payload["regrId"],
             "stockItemList": stock_master_item
         }
 
