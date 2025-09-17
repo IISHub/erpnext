@@ -1,17 +1,12 @@
 import requests
 import frappe
 
-# Centralized error messages
-
-
-
 RETRYABLE_ERRORS = [
     "TIMEOUT", "CONNECTION", "REQUEST_FAILED", "UNKNOWN_RESPONSE",
     "HTTP_ERROR", "UNEXPECTED_ERROR", "838", "894", "801", "802"
 ]
 
 ERRORS = {
-    # General errors
     "TIMEOUT": "The request took too long to process. Please try again later.",
     "CONNECTION": "Network problem detected. Please check your internet connection and try again.",
     "INVALID_PRINCIPAL_ID": "The provided principal ID was not found. Please check and try again.",
@@ -70,8 +65,6 @@ ERRORS = {
 
 
 class RequestException(Exception):
-    """Custom exception for handling API errors with friendly messages."""
-
     def __init__(self, code):
         self.code = code
         self.message = ERRORS.get(code, "An unknown error occurred.")

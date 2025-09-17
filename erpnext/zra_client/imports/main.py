@@ -20,7 +20,6 @@ class Imports(ZRAClient):
         return self.zra_client_update_import(payload)
 
     def update_import(self, import_data):
-        # Extract required fields
         taskCd = import_data.get("custom_task_cd")
         modified_by = import_data.get("modified_by")
         get_class_code = import_data.get("custom_item_class_code")
