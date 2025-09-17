@@ -6,7 +6,7 @@ import json
 from erpnext.zra_client.main import ZRAClient
 from erpnext.zra_client.error.exceptions import RequestException, RETRYABLE_ERRORS
 from erpnext.zra_client.mock.mock import mock_zra_response
-from erpnext.zra_client.main import ZRAClient
+from erpnext.zra_client.customer.customer import ZRACustomerClient
 from erpnext.zra_client.purchase.main import ResponseRetry
 import frappe
 import frappe.defaults
@@ -31,8 +31,7 @@ from urllib.parse import urljoin
 import requests
 from urllib.parse import urljoin
 
-
-zra_instance = ZRAClient()
+zra_customer_instance  = ZRACustomerClient()
 
 
 
@@ -155,90 +154,7 @@ class Customer(TransactionBase):
 
 	def before_insert(self):
 		customer_data = self.as_dict()
-		print(customer_data)
-		frappe.logger().info("Creating customer with data: {}".format(customer_data))
-		if getattr(self.flags, "in_import", False) or getattr(frappe.flags, "in_import", False):
-			frappe.logger().info("Skipping before_insert (Data Import mode).")
-			return
-
-		tpin = customer_data.get("custom_tpin")
-		customer_name = self.get("customer_name") or ""
-		email_id = self.get("custom_customer_email") or ""
-		mobile_no = self.get("custom_customer_number") or ""
-		created_by = customer_data.get("modified_by")
-
-		# Validate TPIN
-		if not tpin:
-			frappe.throw(_("Customer TPIN ({0}) is required.").format(frappe.bold("custom_tpin")))
-
-		if len(tpin) < 10:
-			frappe.throw(_("Invalid TPIN: must be at least 10 characters long."))
-
-		# Validate mobile number
-		if not mobile_no:
-			frappe.throw(_("Customer mobile number is required."))
-
-		if len(mobile_no) < 10:
-			frappe.throw(_("Invalid Mobile Number: must be at least 10 digits."))
-
-		# Check for duplicate TPIN
-		if frappe.db.exists("Customer", {"custom_tpin": tpin}):
-			frappe.throw(_("A customer with TPIN {0} already exists.").format(frappe.bold(tpin)))
-
-		
-		zra_client = ZRAClient()
-		logged_in_user = zra_client.get_logged_in_details(created_by)
-		username = logged_in_user['username']
-		payload = {
-            "tpin": zra_client.get_tpin(),
-            "bhfId": zra_client.get_branch_code(),
-            "custNo": mobile_no,      
-            "custTpin": tpin,      
-            "custNm": customer_name,              
-            "adrs": None,
-            "email":  email_id,
-            "faxNo": None,
-            "useYn": "Y",
-            "remark": None,
-            "regrNm": username,
-            "regrId": username,
-            "modrNm": username,
-            "modrId": username
-        }
-		result = zra_client.create_customer(payload)
-		print(result)
-		# mock_results = mock_zra_response()
-		try:
-			data = result.json()
-			print(data)
-			# data = mock_results
-			if data.get("resultCd") == "000":
-				frappe.msgprint("Customer has been saved successfully.")
-				site = "erpnext.localhost"
-				customerTpin = payload["custTpin"]
-				zra_instance.update_customer_status_by_tpin(customerTpin, 1, 10, site)
-
-				return data
-			else:
-				result_cd = data.get("resultCd")
-				if result_cd in RETRYABLE_ERRORS:
-					response = ResponseRetry(payload, task_type=1).determine_task_type()
-				else:		
-					RequestException(result_cd or "CREATE_CUSTOMER_ERROR").throw()
-
-		except ValueError:
-			RequestException("UNKNOWN_RESPONSE").throw()
-
-		except requests.exceptions.Timeout:
-			RequestException("TIMEOUT").throw()
-
-		except requests.exceptions.RequestException as e:
-			RequestException("REQUEST_FAILED").throw()
-
-
-
-
-
+		return zra_customer_instance.create_customer_helper(customer_data)
 
 	def after_insert(self):
 		"""If customer created from Lead, update customer id in quotations, opportunities"""

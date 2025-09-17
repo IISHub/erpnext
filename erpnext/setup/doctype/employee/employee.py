@@ -29,7 +29,7 @@ class Employee(NestedSet):
 	def autoname(self):
 		set_name_by_naming_series(self)
 		self.employee = self.name
-
+		
 	def validate(self):
 		from erpnext.controllers.status_updater import validate_status
 

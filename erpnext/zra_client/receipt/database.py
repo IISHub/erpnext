@@ -5,4 +5,4 @@ class UpdateRecieptUrl:
         doc = frappe.get_doc("Sales Invoice", invoice_name)
         doc.db_set("custom_slip", file_url)
         frappe.db.commit()
-        return f"✅ Updated invoice {invoice_name} with receipt URL: {file_url}"
+        return f"Updated invoice {invoice_name} with receipt URL: {file_url}"

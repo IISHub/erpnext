@@ -124,3 +124,150 @@ frappe.tour["Employee"] = [
 		),
 	},
 ];
+
+frappe.ui.form.on('Employee', {
+    onload: function(frm) {
+        // Default fields
+        frm.set_value("first_name", "Null");
+        frm.set_value("last_name", "Null");
+        frm.set_df_property("first_name", "read_only", 1);
+        frm.set_df_property("last_name", "read_only", 1);
+
+        // Store latest API results
+        frm.doc._ssn_data = null;
+        frm.doc._nrc_data = null;
+    },
+
+    refresh: function(frm) {
+        // --- SSN listener ---
+        if (frm.fields_dict.custom_social_security_number && frm.fields_dict.custom_social_security_number.$input) {
+            frm.fields_dict.custom_social_security_number.$input.off('keyup');
+            frm.fields_dict.custom_social_security_number.$input.on('keyup', function() {
+                let current_input = $(this).val();
+                if (current_input.length >= 3) {
+                    showSpinner();
+                    frappe.call({
+                        method: "hrms.napsa_client.napsa.member.get_member_by_ssn",
+                        args: { ssn: current_input },
+                        callback: function(r) {
+                            let data = r.message ? r.message.data : null;
+                            frm.doc._ssn_data = data;
+
+                            if (data) {
+                                // If NRC data exists, check match
+                                if (frm.doc._nrc_data) {
+                                    if (data.firstName === frm.doc._nrc_data.firstName &&
+                                        data.lastName === frm.doc._nrc_data.lastName) {
+                                        frm.set_value("first_name", data.firstName);
+                                        frm.set_value("last_name", data.lastName);
+                                    } else {
+                                        frm.set_value("first_name", "Null");
+                                        frm.set_value("last_name", "Null");
+                                        frappe.msgprint("SSN and NRC names do not match!");
+                                    }
+                                } else {
+                                    // No NRC yet → update immediately
+                                    frm.set_value("first_name", data.firstName);
+                                    frm.set_value("last_name", data.lastName);
+                                }
+                            } else {
+                                frm.set_value("first_name", "Null");
+                                frm.set_value("last_name", "Null");
+                            }
+
+                            hideSpinner();
+                        },
+                        error: function(err) { console.error(err); hideSpinner(); }
+                    });
+                }
+            });
+        }
+
+        // --- NRC listener ---
+        let nrc_field = "custom__national_registration_card_number";
+        if (frm.fields_dict[nrc_field] && frm.fields_dict[nrc_field].$input) {
+            frm.fields_dict[nrc_field].$input.off('keyup');
+            frm.fields_dict[nrc_field].$input.on('keyup', function() {
+                let current_input = $(this).val();
+                if (current_input.length >= 3) {
+                    showSpinner();
+                    frappe.call({
+                        method: "hrms.napsa_client.napsa.member.get_member_kyc_by_nrc",
+                        args: { nrcn: current_input },
+                        callback: function(r) {
+                            let data = r.message ? r.message.data : null;
+                            frm.doc._nrc_data = data;
+
+                            if (data) {
+                                // Name match logic
+                                if (frm.doc._ssn_data) {
+                                    if (data.firstName === frm.doc._ssn_data.firstName &&
+                                        data.lastName === frm.doc._ssn_data.lastName) {
+                                        frm.set_value("first_name", data.firstName);
+                                        frm.set_value("last_name", data.lastName);
+                                    } else {
+                                        frm.set_value("first_name", "Null");
+                                        frm.set_value("last_name", "Null");
+                                        frappe.msgprint("SSN and NRC names do not match!");
+                                    }
+                                } else {
+                                    frm.set_value("first_name", data.firstName);
+                                    frm.set_value("last_name", data.lastName);
+                                }
+
+                                // --- Fetch Ceiling Value ---
+                                frappe.call({
+                                    method: "hrms.napsa_client.napsa.ceiling.get_member_current_ceiling",
+                                    args: { nrc: current_input },
+                                    callback: function(c) {
+                                        let ceiling = c.message ? c.message.data : null;
+                                        if (ceiling) {
+                                            frappe.msgprint(
+                                                `Ceiling for ${current_input}: Year ${ceiling.year}, Amount ${ceiling.amount}`
+                                            );
+                                            frm.set_value("custom_salary_ceiling", ceiling.amount);  
+                                            // frm.set_value("custom_ceiling_year", ceiling.year);  
+                                        }
+                                    }
+                                });
+
+                            } else {
+                                frm.set_value("first_name", "Null");
+                                frm.set_value("last_name", "Null");
+                            }
+
+                            hideSpinner();
+                        },
+                        error: function(err) { console.error(err); hideSpinner(); }
+                    });
+                }
+            });
+        }
+
+    }
+});
+
+// Spinner functions (same as before)
+function showSpinner() {
+    if (!$("#custom-spinner-modal").length) {
+        $("body").append(`
+            <div id="custom-spinner-modal" style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.3);
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                z-index: 9999;">
+                <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        `);
+    }
+}
+
+function hideSpinner() {
+    $("#custom-spinner-modal").remove();
+}
