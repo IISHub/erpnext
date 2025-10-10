@@ -4,6 +4,8 @@
 
 import json
 
+import requests
+
 import frappe
 from frappe import _, msgprint
 from frappe.desk.notifications import clear_doctype_notifications
@@ -33,7 +35,7 @@ from erpnext.subcontracting.doctype.subcontracting_bom.subcontracting_bom import
 )
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
-
+from frappe import throw, _
 
 class PurchaseOrder(BuyingController):
 	# begin: auto-generated types
@@ -186,7 +188,7 @@ class PurchaseOrder(BuyingController):
 				"percent_join_field": "material_request",
 			}
 		]
-
+		
 	def onload(self):
 		supplier_tds = frappe.db.get_value("Supplier", self.supplier, "tax_withholding_category")
 		self.set_onload("supplier_tds", supplier_tds)
@@ -198,10 +200,8 @@ class PurchaseOrder(BuyingController):
 
 	def validate(self):
 		super().validate()
-
 		self.set_status()
 
-		# apply tax withholding only if checked and applicable
 		self.set_tax_withholding()
 
 		self.validate_supplier()

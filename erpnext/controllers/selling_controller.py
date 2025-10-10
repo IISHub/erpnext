@@ -14,7 +14,6 @@ from erpnext.stock.doctype.item.item import set_item_default
 from erpnext.stock.get_item_details import get_bin_details, get_conversion_factor
 from erpnext.stock.utils import get_incoming_rate, get_valuation_method
 
-
 class SellingController(StockController):
 	def __setup__(self):
 		self.flags.ignore_permlevel_for_fields = ["selling_price_list", "price_list_currency"]
@@ -42,7 +41,6 @@ class SellingController(StockController):
 					"Stock Settings", "allow_to_make_quality_inspection_after_purchase_or_delivery"
 				),
 			)
-
 	def validate(self):
 		super().validate()
 		self.validate_items()

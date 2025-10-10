@@ -3,8 +3,9 @@
 
 
 import json
+import random
 from typing import Literal
-
+from datetime import datetime
 import frappe
 import frappe.utils
 from frappe import _, qb
@@ -14,7 +15,6 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.model.utils import get_fetch_values
 from frappe.query_builder.functions import Sum
 from frappe.utils import add_days, cint, cstr, flt, get_link_to_form, getdate, nowdate, strip_html
-
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
 	unlink_inter_company_doc,
 	update_linked_doc,
@@ -182,7 +182,8 @@ class SalesOrder(SellingController):
 		total_net_weight: DF.Float
 		total_qty: DF.Float
 		total_taxes_and_charges: DF.Currency
-		transaction_date: DF.Date
+		transaction_date: DF.Dateself.update_rcptNo_delayed(docname=doc_name, rcpt_no=get_rcpt_no)
+
 		utm_campaign: DF.Link | None
 		utm_content: DF.Data | None
 		utm_medium: DF.Link | None
@@ -191,7 +192,16 @@ class SalesOrder(SellingController):
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+	
 
+	def bofore_insert(self):
+		sell_order = self.as_dict()
+		print("**** sales****:",sell_order)
+		sale_obj = zraSales()
+
+		sale_obj.create_sale_normal(sell_order)
+	
+	
 	def onload(self) -> None:
 		super().onload()
 
@@ -201,10 +211,6 @@ class SalesOrder(SellingController):
 
 		if has_reserved_stock(self.doctype, self.name):
 			self.set_onload("has_reserved_stock", True)
-
-	def before_validate(self):
-		self.set_has_unit_price_items()
-		self.flags.allow_zero_qty = self.has_unit_price_items
 
 	def validate(self):
 		super().validate()
@@ -434,6 +440,7 @@ class SalesOrder(SellingController):
 	def on_submit(self):
 		self.check_credit_limit()
 		self.update_reserved_qty()
+	
 
 		frappe.get_cached_doc("Authorization Control").validate_approving_authority(
 			self.doctype, self.company, self.base_grand_total, self
@@ -453,6 +460,10 @@ class SalesOrder(SellingController):
 			self.create_stock_reservation_entries()
 
 	def on_cancel(self):
+		cancel_data = self.as_dict()
+		sale_obj = zraSales()
+		sale_obj.create_credit_note_sale(cancel_data)
+
 		self.ignore_linked_doctypes = (
 			"GL Entry",
 			"Stock Ledger Entry",
@@ -468,6 +479,9 @@ class SalesOrder(SellingController):
 
 		self.check_nextdoc_docstatus()
 		self.update_reserved_qty()
+
+
+	def on_update(self):
 		self.update_project()
 		self.update_prevdoc_status("cancel")
 
@@ -480,7 +494,7 @@ class SalesOrder(SellingController):
 		if self.coupon_code:
 			from erpnext.accounts.doctype.pricing_rule.utils import update_coupon_code_count
 
-			update_coupon_code_count(self.coupon_code, "cancelled")
+			update_coupon_code_count(self.coupon_code, "cancelled !!")
 
 	def update_project(self):
 		if frappe.get_single_value("Selling Settings", "sales_update_frequency") != "Each Transaction":
@@ -526,6 +540,7 @@ class SalesOrder(SellingController):
 			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(self.doctype, self.name))
 
 	def update_status(self, status):
+		print("******** update status ************")
 		self.check_modified_date()
 		self.set_status(update=True, status=status)
 		# Upon Sales Order Re-open, check for credit limit.
@@ -565,11 +580,13 @@ class SalesOrder(SellingController):
 		pass
 
 	def on_update_after_submit(self):
+		print("******** update status ************")
 		self.calculate_commission()
 		self.calculate_contribution()
 		self.check_credit_limit()
 
 	def before_update_after_submit(self):
+		print("******** update status ************")
 		self.validate_po()
 		self.validate_drop_ship()
 		self.validate_supplier_after_submit()
@@ -791,6 +808,7 @@ class SalesOrder(SellingController):
 
 
 def get_unreserved_qty(item: object, reserved_qty_details: dict) -> float:
+
 	"""Returns the unreserved quantity for the Sales Order Item."""
 
 	existing_reserved_qty = reserved_qty_details.get(item.name, 0)
@@ -1650,6 +1668,7 @@ def make_work_orders(items, sales_order, company, project=None):
 
 @frappe.whitelist()
 def update_status(status, name):
+	print("******** update status ************")
 	so = frappe.get_doc("Sales Order", name)
 	so.update_status(status)
 
@@ -1873,4 +1892,5 @@ def get_work_order_items(sales_order, for_raw_material_request=0):
 
 @frappe.whitelist()
 def get_stock_reservation_status():
+	print("******** update status ************")
 	return frappe.get_single_value("Stock Settings", "enable_stock_reservation")

@@ -5,9 +5,15 @@
 import copy
 import json
 
+import requests
+
+
 import frappe
 from frappe import _
 from frappe.utils import cstr, flt
+
+
+
 
 from erpnext.utilities.product import get_item_codes_by_attributes
 
@@ -24,34 +30,60 @@ class ItemTemplateCannotHaveStock(frappe.ValidationError):
 	pass
 
 
+
+
+import requests
+import frappe
+from erpnext.zra_client.main import ZRAClient
+
+
+
+def track_cancel(doc, method):
+    frappe.logger().info(f"Sales Order {doc.name} cancelled by {frappe.session.user} at {frappe.utils.now()}")
+	
 def log_item_changes(doc, method):
-    """Log changes made to Item documents"""
-    print(f"🔄 Item change detected - Method: {method}") 
-    
     if doc.flags.in_insert:
-        print(f"📝 New item being created: {doc.name}")
         return
-    
-    old_doc = doc.get_doc_before_save()
-    if not old_doc:
-        print("⚠️ No old doc found for comparison")
-        return
-    
-    print(f"🔍 Comparing changes for item: {doc.name}")
-    
-    # Compare all fields
-    for field in doc.meta.get("fields"):
-        fieldname = field.fieldname
-        if fieldname in ["modified", "modified_by", "creation", "owner"]:
-            continue
-            
-        old_value = old_doc.get(fieldname)
-        new_value = doc.get(fieldname)
-        
-        if old_value != new_value:
-            print(f"  🔄 {fieldname}: {old_value} → {new_value}")
-    
-    print("✅ Change logging complete")
+
+
+    item_class_code = doc.get("custom_item_class_code")
+    item_code = doc.get("item_code")
+    item_name = doc.get("item_name")
+    product_type = doc.get("custom_product_type")
+    origin_place = doc.get("custom_origin_place_code")
+    packaging_unit = doc.get("custom_packaging_unit_code")
+    qty_unit = doc.get("custom_units_of_measure")
+    vat_category = doc.get("custom_vat")
+    ipl_category = doc.get("custom_ipl_category_code")
+    tl_category = doc.get("custom_tl_category_code")
+    excise_tax_category = doc.get("custom_excise_tax_category_code")
+    use_yn = doc.get("custom_used__unused") 
+    user = doc.get("owner") or "ADMIN"
+
+    zra_client = ZRAClient() 
+
+    try:
+        response = zra_client.update_item(
+            item_class_code=item_class_code, 
+            item_code=item_code,
+            item_name=item_name,
+            product_type=product_type,
+            origin_place=origin_place,
+            packaging_unit=packaging_unit,
+            qty_unit=qty_unit,
+            vat_category=vat_category,
+            ipl_category=ipl_category,
+            tl_category=tl_category,
+            excise_tax_category=excise_tax_category,
+            use_yn=use_yn,
+            user=user
+        )
+        print("ZRA Response:", response)
+    except Exception as e:
+        frappe.log_error(f"Error updating item {item_code} in ZRA: {e}", "ZRA Item Update Failed")
+        frappe.throw(f"Failed to update item in ZRA: {e}")
+
+
 
 	
 @frappe.whitelist()

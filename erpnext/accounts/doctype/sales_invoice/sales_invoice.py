@@ -51,7 +51,8 @@ from erpnext.stock.doctype.delivery_note.delivery_note import update_billed_amou
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
 
-
+from erpnext.zra_client.sales.main import zraSales
+from erpnext.zra_client.main import ZRAClient
 class PartialPaymentValidationError(frappe.ValidationError):
 	pass
 
@@ -447,6 +448,9 @@ class SalesInvoice(SellingController):
 
 	def on_submit(self):
 		self.validate_pos_paid_amount()
+		sell_order = self.as_dict()
+		sale_obj = zraSales()
+		sale_obj.create_sale_normal(sell_order)
 
 		if not self.auto_repeat:
 			frappe.get_cached_doc("Authorization Control").validate_approving_authority(
